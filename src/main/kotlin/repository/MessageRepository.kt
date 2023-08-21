@@ -1,12 +1,15 @@
 package repository
 
+import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.flow.Flow
+import model.Tables
 import model.tables.records.MessageRecord
-import model.tables.records.ReceiverRecord
+import java.lang.module.Configuration
 
 /**
  * T: Type of the id
  */
-interface MessageRepository : Repository<MessageRecord, Int> {
-    suspend fun unsent(receiverId: Int): Flow<MessageRecord>
+abstract class MessageRepository(db: HikariDataSource) : JooqRepository<MessageRecord>(db, Tables.MESSAGE) {
+    context(Configuration)
+    abstract suspend fun unsent(receiverId: Int): Flow<MessageRecord>
 }

@@ -25,8 +25,10 @@ import org.slf4j.event.Level
 import repository.MessageRepository
 import repository.ReceiverRepository
 import repository.RepositoryModule
+import repository.transaction
 import routing.MessagePayload
 import routing.ReceiverPayload
+import routing.ReceiverPayloadWithId
 
 val logger = getLogger("Application")
 
@@ -81,32 +83,38 @@ fun Application.routing() {
 
         post("/user/register") {
             val receiver = call.receive<ReceiverPayload>()
-            receiverRepository.save(ReceiverRecord(null, receiver.name))
-            call.respond("Registered user")
+            val saved = transaction { receiverRepository.save(ReceiverRecord(null, receiver.name)) }
+            call.respond(saved.id)
         }
 
         post("/user/logout") {
             val id = call.receive<Int>()
             either {
-                receiverRepository.delete(receiverRepository.load(id))
+                transaction { receiverRepository.delete(id) }
             }
         }
 
         post("/user/configure") {
-            val name = call.receiveText()
-            receiverRepository.save(ReceiverRecord(null, name))
-            call.respond("Registered user")
+            val receiverPayload = call.receive<ReceiverPayloadWithId>()
+            either {
+                transaction {
+                    val receiver = receiverRepository.load(receiverPayload.id)
+                    receiver.name = receiverPayload.name
+                    receiver.store()
+                }
+            }.onLeft {
+                call.respond("User not found");
+            }.onRight {
+                call.respond("Registered user")
+            }
+
         }
 
         post("/send") {
             val message = call.receive<MessagePayload>()
             either {
-                val receiver = receiverRepository.load(message.receiver)
+                val receiver = transaction { receiverRepository.load(message.receiver) }
             }
-        }
-
-        get("/") {
-            call.respondText("Hello World!")
         }
 
         webSocket("/chat") {

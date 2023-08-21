@@ -11,6 +11,7 @@ import org.koin.test.inject
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import repository.ReceiverRepositoryDB
+import repository.transaction
 
 class ReceiverRepositoryTest : FunSpec(), KoinTest {
 
@@ -32,14 +33,16 @@ class ReceiverRepositoryTest : FunSpec(), KoinTest {
 
         test("save") {
             val record = ReceiverRecord(null, "test")
-            val stored = receiverRepository.save(record)
+            val stored = transaction { receiverRepository.save(record) }
             stored.id shouldNotBe null
         }
 
         test("saving multiple times keeps the id") {
-            val stored = receiverRepository.save(ReceiverRecord(null, "test"))
-            val stored2 = receiverRepository.save(stored.apply { name = "test2" })
-            stored.id shouldBe stored2.id
+            transaction {
+                val stored = receiverRepository.save(ReceiverRecord(null, "test"))
+                val stored2 = receiverRepository.save(stored.apply { name = "test2" })
+                stored.id shouldBe stored2.id
+            }
         }
     }
 }
