@@ -17,6 +17,7 @@ val hikaricp_version: String by project
 
 plugins {
     kotlin("jvm") version "1.9.0"
+    kotlin("plugin.serialization") version "1.9.0"
     id("nu.studer.jooq") version "8.2"
     id("com.google.devtools.ksp") version "1.9.0-1.0.11"
     application
@@ -35,7 +36,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation(kotlin("test"))
+    //testImplementation(kotlin("test:1.8.10"))
 
     implementation("org.postgresql:postgresql:$postgres_version")
     implementation("com.zaxxer:HikariCP:$hikaricp_version")
@@ -52,6 +53,7 @@ dependencies {
     implementation("io.arrow-kt:suspendapp-jvm:0.4.1-alpha.5")
     implementation("io.arrow-kt:suspendapp-ktor-jvm:0.4.1-alpha.5")
 
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
 
     implementation("io.ktor:ktor-network:$ktor_version")
     implementation("io.ktor:ktor-network-tls:$ktor_version")
@@ -59,6 +61,9 @@ dependencies {
     implementation("io.ktor:ktor-server-core-jvm:$ktor_version")
     implementation("io.ktor:ktor-server-netty-jvm:$ktor_version")
     implementation("io.ktor:ktor-server-call-logging-jvm:$ktor_version")
+    implementation("io.ktor:ktor-server-content-negotiation:$ktor_version")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktor_version")
+    implementation("io.ktor:ktor-server-request-validation:$ktor_version")
 
 
     jooqGenerator("org.postgresql:postgresql:42.5.1")
@@ -79,10 +84,15 @@ dependencies {
 
 
     // kotest
-    testImplementation("io.kotest:kotest-runner-junit5:5.5.5")
-    testImplementation("io.kotest:kotest-assertions-core:5.5.5")
+    testImplementation("io.kotest:kotest-runner-junit5:5.6.0")
+    testImplementation("io.kotest:kotest-assertions-core:5.6.0")
     testImplementation("io.kotest.extensions:kotest-extensions-koin:1.1.0")
-    testImplementation("io.kotest:kotest-property:5.5.5")
+    testImplementation("io.kotest:kotest-property:5.6.0")
+
+    // testcontainers
+    testImplementation("io.kotest.extensions:kotest-extensions-testcontainers:2.0.2")
+    // testImplementation("org.testcontainers:testcontainers:1.18.3")
+    testImplementation("org.testcontainers:postgresql:1.18.3")
 
     // mockk
     testImplementation("io.mockk:mockk:1.13.4")
@@ -136,7 +146,7 @@ jooq {
 }
 
 
-tasks.test {
+tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
 

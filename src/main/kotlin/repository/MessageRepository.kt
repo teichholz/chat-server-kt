@@ -7,6 +7,6 @@ import model.tables.records.ReceiverRecord
 /**
  * T: Type of the id
  */
-interface MessageRepository<T> : Repository<MessageRecord, T> {
-    suspend fun unsent(receiver: ReceiverRecord): Flow<MessageRecord>
+interface MessageRepository : Repository<MessageRecord, Int> {
+    suspend fun unsent(receiverId: Int): Flow<MessageRecord>
 }

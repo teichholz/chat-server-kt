@@ -1,5 +1,3 @@
 package model
 
-import java.util.UUID
-
-data class Receiver(val id: UUID) {}
+data class Receiver(val id: Int, val name: String) {}

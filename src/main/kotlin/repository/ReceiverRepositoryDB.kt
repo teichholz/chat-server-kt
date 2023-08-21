@@ -7,5 +7,9 @@ import org.koin.core.annotation.Single
 
 
 @Single
-class ReceiverRepositoryDB(db: HikariDataSource) : JooqRepository<ReceiverRecord>(db, RECEIVER), ReceiverRepository<Int> {
+class ReceiverRepositoryDB(db: HikariDataSource) : JooqRepository<ReceiverRecord>(db, RECEIVER), ReceiverRepository {
 }
+
+fun ReceiverRecord.map(): model.Receiver = model.Receiver(id, name)
+
+fun model.Receiver.map(): ReceiverRecord = ReceiverRecord(null, name)

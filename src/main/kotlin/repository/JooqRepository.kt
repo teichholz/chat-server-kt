@@ -14,9 +14,13 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val database: Hi
     override suspend fun save(obj: RECORD): Int {
         return sql {
             val attached = newRecord(table, obj)
-            attached.store()
+            attached.merge()
             attached.get(0, Int::class.java)
         }
+    }
+
+    override suspend fun delete(obj: RECORD): Unit = sql {
+        obj.delete()
     }
 
     context(Raise<SqlError.RecordNotFound>)

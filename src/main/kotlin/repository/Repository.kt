@@ -5,6 +5,8 @@ import arrow.core.raise.Raise
 interface Repository<CLASS, ID> {
     suspend fun save(obj: CLASS): ID
 
+    suspend fun delete(obj: CLASS)
+
     context(Raise<SqlError.RecordNotFound>)
     suspend fun load(id: ID): CLASS
 
