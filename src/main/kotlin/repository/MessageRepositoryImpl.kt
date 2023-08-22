@@ -6,6 +6,8 @@ import di.di
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.reactive.asFlow
+import kotlinx.datetime.toJavaLocalDateTime
+import kotlinx.datetime.toKotlinLocalDateTime
 import model.Message
 import model.Tables.MESSAGE
 import model.tables.records.MessageRecord
@@ -31,6 +33,7 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
 
 fun Message.record(): MessageRecord = MessageRecord()
     .setContent(content)
+    .setDate(date.toJavaLocalDateTime())
     .setSender(sender.id)
     .setReceiver(receiver.id)
     .setSent(sent)
@@ -41,6 +44,6 @@ suspend inline fun MessageRecord.domain(): Message {
     return sql {
         val sender = receiverRepository.load(this@domain.sender)
         val receiver = receiverRepository.load(this@domain.receiver)
-        Message(content, sender.domain(), receiver.domain(), sent)
+        Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain(), sent)
     }
 }

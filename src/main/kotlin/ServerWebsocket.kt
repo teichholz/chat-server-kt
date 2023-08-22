@@ -13,9 +13,8 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
-import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.isActive
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.tables.records.ReceiverRecord
@@ -27,11 +26,17 @@ import org.slf4j.event.Level
 import repository.MessageRepository
 import repository.ReceiverRepository
 import repository.RepositoryModule
-import repository.SqlError
+import repository.domain
 import repository.transaction
 import routing.MessagePayload
-import routing.ReceiverPayload
-import routing.ReceiverPayloadWithId
+import routing.ReceiverPayloadLogin
+import routing.ReceiverPayloadLogout
+import routing.ReceiverPayloadRegister
+import routing.RequestValidator
+import routing.record
+import scheduler.DeliverMessagesJob
+import scheduler.Scheduler
+import kotlin.time.Duration.Companion.minutes
 
 val logger = getLogger("Application")
 
@@ -43,7 +48,7 @@ fun main() = SuspendApp {
             webSockets()
             routing()
         }
-
+        Scheduler.install()
 
         awaitCancellation()
     }
@@ -79,32 +84,61 @@ fun Application.routing() {
             isLenient = true
         })
     }
-    install(RequestValidation)
+    val validator: RequestValidator by inject()
+
+    val messageRepository: MessageRepository by inject()
+    val receiverRepository: ReceiverRepository by inject()
+
+    install(RequestValidation) {
+        validate<ReceiverPayloadRegister>(validator::validateNameNotTaken)
+        validate<ReceiverPayloadLogin>(validator::validateSynch)
+        validate<ReceiverPayloadLogout>(validator::validateSynch)
+    }
+
     routing {
-        val messageRepository: MessageRepository by inject()
-        val receiverRepository: ReceiverRepository by inject()
+        webSocket("/user/register") {
+            val receiver = receiveDeserialized<ReceiverPayloadRegister>()
 
-        post("/user/register") {
-            val receiver = call.receive<ReceiverPayload>()
-            val saved = transaction { receiverRepository.save(ReceiverRecord(null, receiver.name)) }
-            call.respond(saved.id)
-        }
-
-        post("/user/logout") {
-            val id = call.receive<Int>()
-            either {
-                transaction { receiverRepository.delete(id) }
+            transaction {
+                receiverRepository.save(ReceiverRecord(null, receiver.name)).domain()
+            }.run {
+                Scheduler.schedule(1.minutes, DeliverMessagesJob(this))
+                call.respond(id)
             }
         }
 
-        post("/user/configure") {
-            val from = call.receive<ReceiverPayloadWithId>()
-            val to = call.receive<ReceiverPayload>()
+        post("/user/logout") {
+            val id = call.receive<ReceiverPayloadLogout>()
+            val job = Scheduler.jobs[id.id]
+            if (job != null) {
+                job.supervisor.cancelAndJoin()
+                Scheduler.jobs.remove(job.id)
+            }
+            call.respond("Logged out user $id")
+        }
+
+        post("/send") {
+            val message = call.receive<MessagePayload>()
+            either {
+                transaction { receiverRepository.load(message.receiver) }
+            }.onLeft {
+                call.respond("Receiver not found")
+            }.onRight {
+                transaction {
+                    messageRepository.save(message.record())
+                }
+                call.respond("Message will be sent")
+            }
+        }
+
+        /*post("/user/configure") {
+            val config: ReceiverPayloadConfiguration = call.receive()
             either {
                 transaction {
-                    val receiver = receiverRepository.load(from.id)
-                    if (from.equals(receiver)) {
-                        receiver.name = to.name
+                    val receiver = receiverRepository.load(config.from.id)
+                    if (config.from.equals(receiver.payload())) {
+                        // TODO: Name should be unique
+                        receiver.name = config.to.name
                         receiverRepository.save(receiver)
                     } else {
                         raise("User mismatch")
@@ -118,24 +152,7 @@ fun Application.routing() {
             }.onRight {
                 call.respond("Configured user")
             }
+        }*/
 
-        }
-
-        post("/send") {
-            val message = call.receive<MessagePayload>()
-            either {
-                val receiver = transaction { receiverRepository.load(message.receiver) }
-            }
-        }
-
-        webSocket("/chat") {
-            sendSerialized()
-            send("You are connected!")
-            for(frame in incoming) {
-                frame as? Frame.Text ?: continue
-                val receivedText = frame.readText()
-                send("You said: $receivedText")
-            }
-        }
     }
 }

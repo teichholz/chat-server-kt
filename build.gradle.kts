@@ -49,11 +49,13 @@ dependencies {
     implementation("io.arrow-kt:arrow-core:1.2.0")
     implementation("io.arrow-kt:arrow-fx-coroutines:1.2.0")
     implementation("io.arrow-kt:arrow-fx-stm:1.2.0")
+    implementation("io.arrow-kt:arrow-resilience:1.2.0")
     // implementation("io.arrow-kt:suspendapp:0.4.1-alpha.5")
     implementation("io.arrow-kt:suspendapp-jvm:0.4.1-alpha.5")
     implementation("io.arrow-kt:suspendapp-ktor-jvm:0.4.1-alpha.5")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.5.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.4.0")
 
     implementation("io.ktor:ktor-network:$ktor_version")
     implementation("io.ktor:ktor-network-tls:$ktor_version")

@@ -5,9 +5,11 @@ import arrow.core.raise.ensure
 import com.zaxxer.hikari.HikariDataSource
 import di.di
 import kotlinx.coroutines.future.asDeferred
+import kotlinx.coroutines.future.await
 import org.jooq.Configuration
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
+import org.jooq.UniqueKey
 import org.jooq.UpdatableRecord
 import org.jooq.impl.DSL
 import org.jooq.impl.TableImpl
@@ -28,7 +30,6 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val db: HikariDa
 
     context(Raise<SqlError.RecordNotFound>, Configuration)
     override suspend fun delete(id: Int): Unit {
-        table.primaryKey
         val count = dsl()
             .deleteFrom(table).where(table.field(0, Int::class.java)!!.eq(id))
                 .executeAsync()
@@ -42,12 +43,13 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val db: HikariDa
 
     context(Raise<SqlError.RecordNotFound>, Configuration)
     override suspend fun load(id: Int): RECORD {
-        val await = dsl().fetchAsync(table, table.field(0, Int::class.java)!!.eq(id)).asDeferred().await()
+        val await = dsl().fetchAsync(table, table.field(0, Int::class.java)!!.eq(id)).await()
         ensure(await.size == 1) {
             raise(SqlError.RecordNotFound(id))
         }
         return await.first()
     }
+
 
     suspend fun <T> transaction(block: suspend Configuration.() -> T): T {
         val dsl = DSL.using(db, SQLDialect.POSTGRES)

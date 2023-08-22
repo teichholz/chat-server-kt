@@ -4,6 +4,7 @@
 package model.tables;
 
 
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -14,12 +15,12 @@ import model.tables.records.MessageRecord;
 
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function5;
+import org.jooq.Function6;
 import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row5;
+import org.jooq.Row6;
 import org.jooq.Schema;
 import org.jooq.SelectField;
 import org.jooq.Table;
@@ -60,7 +61,17 @@ public class MessageJ extends TableImpl<MessageRecord> {
     /**
      * The column <code>chat.message.content</code>.
      */
-    public final TableField<MessageRecord, String> CONTENT = createField(DSL.name("content"), SQLDataType.CLOB, this, "");
+    public final TableField<MessageRecord, String> CONTENT = createField(DSL.name("content"), SQLDataType.CLOB.nullable(false), this, "");
+
+    /**
+     * The column <code>chat.message.date</code>.
+     */
+    public final TableField<MessageRecord, LocalDateTime> DATE = createField(DSL.name("date"), SQLDataType.LOCALDATETIME(6).nullable(false), this, "");
+
+    /**
+     * The column <code>chat.message.sender</code>.
+     */
+    public final TableField<MessageRecord, Integer> SENDER = createField(DSL.name("sender"), SQLDataType.INTEGER, this, "");
 
     /**
      * The column <code>chat.message.receiver</code>.
@@ -71,11 +82,6 @@ public class MessageJ extends TableImpl<MessageRecord> {
      * The column <code>chat.message.sent</code>.
      */
     public final TableField<MessageRecord, Boolean> SENT = createField(DSL.name("sent"), SQLDataType.BOOLEAN.defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
-
-    /**
-     * The column <code>chat.message.sender</code>.
-     */
-    public final TableField<MessageRecord, Integer> SENDER = createField(DSL.name("sender"), SQLDataType.INTEGER, this, "");
 
     private MessageJ(Name alias, Table<MessageRecord> aliased) {
         this(alias, aliased, null);
@@ -127,11 +133,22 @@ public class MessageJ extends TableImpl<MessageRecord> {
 
     @Override
     public List<ForeignKey<MessageRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.MESSAGE__MESSAGE_RECEIVER_FKEY, Keys.MESSAGE__SENDER_RECEIVER_FK);
+        return Arrays.asList(Keys.MESSAGE__MESSAGE_SENDER_FKEY, Keys.MESSAGE__MESSAGE_RECEIVER_FKEY);
     }
 
+    private transient ReceiverJ _messageSenderFkey;
     private transient ReceiverJ _messageReceiverFkey;
-    private transient ReceiverJ _senderReceiverFk;
+
+    /**
+     * Get the implicit join path to the <code>chat.receiver</code> table, via
+     * the <code>message_sender_fkey</code> key.
+     */
+    public ReceiverJ messageSenderFkey() {
+        if (_messageSenderFkey == null)
+            _messageSenderFkey = new ReceiverJ(this, Keys.MESSAGE__MESSAGE_SENDER_FKEY);
+
+        return _messageSenderFkey;
+    }
 
     /**
      * Get the implicit join path to the <code>chat.receiver</code> table, via
@@ -142,17 +159,6 @@ public class MessageJ extends TableImpl<MessageRecord> {
             _messageReceiverFkey = new ReceiverJ(this, Keys.MESSAGE__MESSAGE_RECEIVER_FKEY);
 
         return _messageReceiverFkey;
-    }
-
-    /**
-     * Get the implicit join path to the <code>chat.receiver</code> table, via
-     * the <code>sender_receiver_fk</code> key.
-     */
-    public ReceiverJ senderReceiverFk() {
-        if (_senderReceiverFk == null)
-            _senderReceiverFk = new ReceiverJ(this, Keys.MESSAGE__SENDER_RECEIVER_FK);
-
-        return _senderReceiverFk;
     }
 
     @Override
@@ -195,18 +201,18 @@ public class MessageJ extends TableImpl<MessageRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row5 type methods
+    // Row6 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row5<Integer, String, Integer, Boolean, Integer> fieldsRow() {
-        return (Row5) super.fieldsRow();
+    public Row6<Integer, String, LocalDateTime, Integer, Integer, Boolean> fieldsRow() {
+        return (Row6) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function5<? super Integer, ? super String, ? super Integer, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function6<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? super Boolean, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -214,7 +220,7 @@ public class MessageJ extends TableImpl<MessageRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super String, ? super Integer, ? super Boolean, ? super Integer, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? super Boolean, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

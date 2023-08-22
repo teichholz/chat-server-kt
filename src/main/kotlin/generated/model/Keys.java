@@ -28,6 +28,7 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final UniqueKey<MessageRecord> MESSAGE_PKEY = Internal.createUniqueKey(MessageJ.MESSAGE, DSL.name("message_pkey"), new TableField[] { MessageJ.MESSAGE.ID }, true);
+    public static final UniqueKey<ReceiverRecord> RECEIVER_NAME_KEY = Internal.createUniqueKey(ReceiverJ.RECEIVER, DSL.name("receiver_name_key"), new TableField[] { ReceiverJ.RECEIVER.NAME }, true);
     public static final UniqueKey<ReceiverRecord> RECEIVER_PKEY = Internal.createUniqueKey(ReceiverJ.RECEIVER, DSL.name("receiver_pkey"), new TableField[] { ReceiverJ.RECEIVER.ID }, true);
 
     // -------------------------------------------------------------------------
@@ -35,5 +36,5 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final ForeignKey<MessageRecord, ReceiverRecord> MESSAGE__MESSAGE_RECEIVER_FKEY = Internal.createForeignKey(MessageJ.MESSAGE, DSL.name("message_receiver_fkey"), new TableField[] { MessageJ.MESSAGE.RECEIVER }, Keys.RECEIVER_PKEY, new TableField[] { ReceiverJ.RECEIVER.ID }, true);
-    public static final ForeignKey<MessageRecord, ReceiverRecord> MESSAGE__SENDER_RECEIVER_FK = Internal.createForeignKey(MessageJ.MESSAGE, DSL.name("sender_receiver_fk"), new TableField[] { MessageJ.MESSAGE.SENDER }, Keys.RECEIVER_PKEY, new TableField[] { ReceiverJ.RECEIVER.ID }, true);
+    public static final ForeignKey<MessageRecord, ReceiverRecord> MESSAGE__MESSAGE_SENDER_FKEY = Internal.createForeignKey(MessageJ.MESSAGE, DSL.name("message_sender_fkey"), new TableField[] { MessageJ.MESSAGE.SENDER }, Keys.RECEIVER_PKEY, new TableField[] { ReceiverJ.RECEIVER.ID }, true);
 }

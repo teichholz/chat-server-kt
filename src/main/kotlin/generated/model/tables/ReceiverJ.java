@@ -4,6 +4,8 @@
 package model.tables;
 
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.Function;
 
 import model.Chat;
@@ -58,7 +60,7 @@ public class ReceiverJ extends TableImpl<ReceiverRecord> {
     /**
      * The column <code>chat.receiver.name</code>.
      */
-    public final TableField<ReceiverRecord, String> NAME = createField(DSL.name("name"), SQLDataType.CLOB, this, "");
+    public final TableField<ReceiverRecord, String> NAME = createField(DSL.name("name"), SQLDataType.CLOB.nullable(false), this, "");
 
     private ReceiverJ(Name alias, Table<ReceiverRecord> aliased) {
         this(alias, aliased, null);
@@ -106,6 +108,11 @@ public class ReceiverJ extends TableImpl<ReceiverRecord> {
     @Override
     public UniqueKey<ReceiverRecord> getPrimaryKey() {
         return Keys.RECEIVER_PKEY;
+    }
+
+    @Override
+    public List<UniqueKey<ReceiverRecord>> getUniqueKeys() {
+        return Arrays.asList(Keys.RECEIVER_NAME_KEY);
     }
 
     @Override
