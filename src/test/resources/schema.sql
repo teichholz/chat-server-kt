@@ -5,9 +5,9 @@ CREATE TABLE IF NOT EXISTS CHAT.receiver (
     name TEXT
 );
 
-
 CREATE TABLE IF NOT EXISTS CHAT.message (
     id SERIAL PRIMARY KEY,
+    sender INT REFERENCES CHAT.receiver(id),
     content TEXT,
     receiver INT REFERENCES CHAT.receiver(id),
     sent BOOLEAN DEFAULT FALSE

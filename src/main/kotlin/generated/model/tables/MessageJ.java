@@ -14,12 +14,12 @@ import model.tables.records.MessageRecord;
 
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function4;
+import org.jooq.Function5;
 import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row4;
+import org.jooq.Row5;
 import org.jooq.Schema;
 import org.jooq.SelectField;
 import org.jooq.Table;
@@ -72,6 +72,11 @@ public class MessageJ extends TableImpl<MessageRecord> {
      */
     public final TableField<MessageRecord, Boolean> SENT = createField(DSL.name("sent"), SQLDataType.BOOLEAN.defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
 
+    /**
+     * The column <code>chat.message.sender</code>.
+     */
+    public final TableField<MessageRecord, Integer> SENDER = createField(DSL.name("sender"), SQLDataType.INTEGER, this, "");
+
     private MessageJ(Name alias, Table<MessageRecord> aliased) {
         this(alias, aliased, null);
     }
@@ -122,19 +127,32 @@ public class MessageJ extends TableImpl<MessageRecord> {
 
     @Override
     public List<ForeignKey<MessageRecord, ?>> getReferences() {
-        return Arrays.asList(Keys.MESSAGE__MESSAGE_RECEIVER_FKEY);
+        return Arrays.asList(Keys.MESSAGE__MESSAGE_RECEIVER_FKEY, Keys.MESSAGE__SENDER_RECEIVER_FK);
     }
 
-    private transient ReceiverJ _receiver;
+    private transient ReceiverJ _messageReceiverFkey;
+    private transient ReceiverJ _senderReceiverFk;
 
     /**
-     * Get the implicit join path to the <code>chat.receiver</code> table.
+     * Get the implicit join path to the <code>chat.receiver</code> table, via
+     * the <code>message_receiver_fkey</code> key.
      */
-    public ReceiverJ receiver() {
-        if (_receiver == null)
-            _receiver = new ReceiverJ(this, Keys.MESSAGE__MESSAGE_RECEIVER_FKEY);
+    public ReceiverJ messageReceiverFkey() {
+        if (_messageReceiverFkey == null)
+            _messageReceiverFkey = new ReceiverJ(this, Keys.MESSAGE__MESSAGE_RECEIVER_FKEY);
 
-        return _receiver;
+        return _messageReceiverFkey;
+    }
+
+    /**
+     * Get the implicit join path to the <code>chat.receiver</code> table, via
+     * the <code>sender_receiver_fk</code> key.
+     */
+    public ReceiverJ senderReceiverFk() {
+        if (_senderReceiverFk == null)
+            _senderReceiverFk = new ReceiverJ(this, Keys.MESSAGE__SENDER_RECEIVER_FK);
+
+        return _senderReceiverFk;
     }
 
     @Override
@@ -177,18 +195,18 @@ public class MessageJ extends TableImpl<MessageRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row4 type methods
+    // Row5 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row4<Integer, String, Integer, Boolean> fieldsRow() {
-        return (Row4) super.fieldsRow();
+    public Row5<Integer, String, Integer, Boolean, Integer> fieldsRow() {
+        return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function4<? super Integer, ? super String, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super Integer, ? super String, ? super Integer, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -196,7 +214,7 @@ public class MessageJ extends TableImpl<MessageRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function4<? super Integer, ? super String, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super String, ? super Integer, ? super Boolean, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

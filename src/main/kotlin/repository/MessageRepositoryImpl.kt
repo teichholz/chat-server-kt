@@ -16,12 +16,12 @@ import reactor.core.publisher.Flux
 
 
 @Single
-class MessageRepositoryDB(db: HikariDataSource) : MessageRepository(db) {
+class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
     context(Configuration)
     override suspend fun unsent(receiverId: Int): Flow<MessageRecord> = sql {
         val query = select()
             .from(MESSAGE)
-            .where(MESSAGE.receiver().ID.eq(receiverId).and(MESSAGE.SENT.eq(false)))
+            .where(MESSAGE.RECEIVER.eq(receiverId).and(MESSAGE.SENT.eq(false)))
 
         Flux.from(query).asFlow().map {
             it.into(MessageRecord::class.java)
@@ -29,11 +29,18 @@ class MessageRepositoryDB(db: HikariDataSource) : MessageRepository(db) {
     }
 }
 
-fun Message.map(): MessageRecord = MessageRecord(null, content, receiver.id, sent)
+fun Message.record(): MessageRecord = MessageRecord()
+    .setContent(content)
+    .setSender(sender.id)
+    .setReceiver(receiver.id)
+    .setSent(sent)
 
-context(Raise<SqlError.RecordNotFound>)
-suspend fun MessageRecord.map(): Message {
-    val receiverRepository = di { inject<ReceiverRepositoryDB>().value }
-    val receiver = transaction { receiverRepository.load(this@map.receiver) }
-    return Message(content, receiver.map(), sent)
+context(Raise<SqlError.RecordNotFound>, Configuration)
+suspend inline fun MessageRecord.domain(): Message {
+    val receiverRepository = di { inject<ReceiverRepositoryImpl>().value }
+    return sql {
+        val sender = receiverRepository.load(this@domain.sender)
+        val receiver = receiverRepository.load(this@domain.receiver)
+        Message(content, sender.domain(), receiver.domain(), sent)
+    }
 }

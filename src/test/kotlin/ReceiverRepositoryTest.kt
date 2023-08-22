@@ -10,14 +10,14 @@ import org.koin.test.KoinTest
 import org.koin.test.inject
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
-import repository.ReceiverRepositoryDB
+import repository.ReceiverRepositoryImpl
 import repository.transaction
 
 class ReceiverRepositoryTest : FunSpec(), KoinTest {
 
     override fun extensions() = listOf(KoinExtension(module {
         single { ds }
-        single { ReceiverRepositoryDB(get()) }
+        single { ReceiverRepositoryImpl(get()) }
     }))
 
     val postgres = PostgreSQLContainer(DockerImageName.parse("postgres:15")).withInitScript("schema.sql")
@@ -25,7 +25,7 @@ class ReceiverRepositoryTest : FunSpec(), KoinTest {
     val ds = install(JdbcDatabaseContainerExtension(postgres))
 
     init {
-        val receiverRepository by inject<ReceiverRepositoryDB>()
+        val receiverRepository by inject<ReceiverRepositoryImpl>()
 
         beforeTest {
 

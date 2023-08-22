@@ -35,4 +35,5 @@ public class Keys {
     // -------------------------------------------------------------------------
 
     public static final ForeignKey<MessageRecord, ReceiverRecord> MESSAGE__MESSAGE_RECEIVER_FKEY = Internal.createForeignKey(MessageJ.MESSAGE, DSL.name("message_receiver_fkey"), new TableField[] { MessageJ.MESSAGE.RECEIVER }, Keys.RECEIVER_PKEY, new TableField[] { ReceiverJ.RECEIVER.ID }, true);
+    public static final ForeignKey<MessageRecord, ReceiverRecord> MESSAGE__SENDER_RECEIVER_FK = Internal.createForeignKey(MessageJ.MESSAGE, DSL.name("sender_receiver_fk"), new TableField[] { MessageJ.MESSAGE.SENDER }, Keys.RECEIVER_PKEY, new TableField[] { ReceiverJ.RECEIVER.ID }, true);
 }

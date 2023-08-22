@@ -4,7 +4,7 @@ import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.flow.Flow
 import model.Tables
 import model.tables.records.MessageRecord
-import java.lang.module.Configuration
+import org.jooq.Configuration
 
 /**
  * T: Type of the id

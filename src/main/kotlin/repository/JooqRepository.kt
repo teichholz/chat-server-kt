@@ -23,11 +23,12 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val db: HikariDa
             attached = dsl().newRecord(table, obj)
         }
         attached.store()
-        return attached.into(table)
+        return attached
     }
 
     context(Raise<SqlError.RecordNotFound>, Configuration)
     override suspend fun delete(id: Int): Unit {
+        table.primaryKey
         val count = dsl()
             .deleteFrom(table).where(table.field(0, Int::class.java)!!.eq(id))
                 .executeAsync()
