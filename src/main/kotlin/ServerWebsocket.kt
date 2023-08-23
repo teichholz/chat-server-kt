@@ -84,12 +84,12 @@ fun Application.routing() {
             isLenient = true
         })
     }
-    val validator: RequestValidator by inject()
 
     val messageRepository: MessageRepository by inject()
     val receiverRepository: ReceiverRepository by inject()
 
     install(RequestValidation) {
+        val validator: RequestValidator by inject()
         validate<ReceiverPayloadRegister>(validator::validateNameNotTaken)
         validate<ReceiverPayloadLogin>(validator::validateSynch)
         validate<ReceiverPayloadLogout>(validator::validateSynch)

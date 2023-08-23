@@ -1,6 +1,5 @@
 package scheduler
 
-import arrow.core.Either
 import arrow.core.raise.either
 import arrow.resilience.Schedule
 import arrow.resilience.retry
@@ -33,13 +32,11 @@ class DeliverMessagesJob(val receiver: Receiver) : Job<Int>, KoinComponent {
             messageRepository.unsent(receiver.id)
         }.retry(Schedule.recurs<Throwable>(5).zipLeft(Schedule.linear(10.seconds)))
 
-        unsent.collect {
-            val record = it
+        unsent.collect { messageRecord ->
+            var payload: MessagePayloadJob? = null
             transaction {
-                var payload: MessagePayloadJob? = null
-                Either.catch {
-                    either {
-                        val message = it.domain()
+                either { messageRecord.domain() }
+                    .onRight { message ->
                         payload = MessagePayloadJob(
                             ReceiverPayload(message.receiver.name),
                             message.content,
@@ -47,14 +44,13 @@ class DeliverMessagesJob(val receiver: Receiver) : Job<Int>, KoinComponent {
                         )
 
                         sendSerialized(payload)
-                        record.sent = true
-                        messageRepository.save(record)
+                        messageRecord.sent = true
+                        messageRepository.save(messageRecord)
                     }
-                }.onLeft {
-                    logger.error("Error trying to send unsent messages", it)
-                }.onRight {
-                    logger.info("Sent unsent message: $payload")
-                }
+            }.onLeft {
+                logger.error("Error trying to send unsent messages", it)
+            }.onRight {
+                logger.info("Sent unsent message: $payload")
             }
         }
     }
