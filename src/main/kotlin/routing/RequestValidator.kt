@@ -2,11 +2,13 @@ package routing
 
 import arrow.core.raise.either
 import io.ktor.server.plugins.requestvalidation.*
+import org.koin.core.annotation.Single
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import repository.ReceiverRepository
 import repository.transaction
 
+@Single
 class RequestValidator : KoinComponent {
     val receiverRepository: ReceiverRepository by inject()
 

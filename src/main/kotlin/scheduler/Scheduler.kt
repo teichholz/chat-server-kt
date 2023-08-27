@@ -10,14 +10,15 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import logger.LoggerDelegate
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.inject
 import kotlin.time.Duration
 
-object Scheduler {
+object Scheduler : KoinComponent {
     private val logger by LoggerDelegate()
-
     private val parentSupervisor = SupervisorJob()
 
-    val jobs = mutableMapOf<Int, SupervisedJob<Int>>()
+    val jobs by inject<JobRegistry<Int>>()
 
     context(ResourceScope)
     suspend fun install() {
@@ -27,7 +28,7 @@ object Scheduler {
     fun schedule(period: Duration, job: Job<Int>) {
         val supervisor = SupervisorJob(parentSupervisor)
 
-        jobs[job.id] = job.supervise(supervisor)
+        jobs += job.supervise(supervisor)
 
         logger.info("Scheduling job ${job.name}")
         tickerFlow(period).onEach {

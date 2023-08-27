@@ -14,7 +14,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import kotlinx.coroutines.awaitCancellation
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.tables.records.ReceiverRecord
@@ -33,9 +32,12 @@ import routing.ReceiverPayloadLogin
 import routing.ReceiverPayloadLogout
 import routing.ReceiverPayloadRegister
 import routing.RequestValidator
+import routing.RoutingModule
 import routing.record
 import scheduler.DeliverMessagesJob
+import scheduler.JobRegistry
 import scheduler.Scheduler
+import scheduler.SchedulerModule
 import kotlin.time.Duration.Companion.minutes
 
 val logger = getLogger("Application")
@@ -57,7 +59,7 @@ fun main() = SuspendApp {
 fun Application.di() {
     install(Koin) {
         slf4jLogger()
-        modules(RepositoryModule().module)
+        modules(RepositoryModule().module, RoutingModule().module, SchedulerModule().module)
         logger.info("Koin installed")
     }
 }
@@ -67,8 +69,6 @@ fun Application.logging() {
         level = Level.INFO
         filter { call -> call.request.path().startsWith("/") }
     }
-
-    webSockets()
 }
 
 fun Application.webSockets() {
@@ -87,6 +87,8 @@ fun Application.routing() {
 
     val messageRepository: MessageRepository by inject()
     val receiverRepository: ReceiverRepository by inject()
+
+    val jobs by inject<JobRegistry<Int>>()
 
     install(RequestValidation) {
         val validator: RequestValidator by inject()
@@ -108,13 +110,11 @@ fun Application.routing() {
         }
 
         post("/user/logout") {
-            val id = call.receive<ReceiverPayloadLogout>()
-            val job = Scheduler.jobs[id.id]
-            if (job != null) {
-                job.supervisor.cancelAndJoin()
-                Scheduler.jobs.remove(job.id)
-            }
-            call.respond("Logged out user $id")
+            val logout = call.receive<ReceiverPayloadLogout>()
+            either {
+                jobs.unregister(logout.id)
+            }.onLeft { logger.error("Error while stopping job $it") }
+            call.respond("Logged out user $logout")
         }
 
         post("/send") {
