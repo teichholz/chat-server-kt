@@ -4,8 +4,11 @@ import arrow.core.raise.Raise
 import arrow.core.raise.ensureNotNull
 import kotlinx.coroutines.cancelAndJoin
 
-sealed class JobException(override val message: String) : Throwable(message) {
-    data class JobNotFound(val id: Any) : JobException("Job with id $id not found") {}
+sealed interface JobError {
+    data class JobNotFound<T: Any>(val id: T) : JobError {
+        val message: String
+            get() = "Job with id $id not found"
+    }
 }
 
 class JobRegistry<ID : Any> {
@@ -17,10 +20,10 @@ class JobRegistry<ID : Any> {
 
     operator fun plusAssign(job: SupervisedJob<ID>) = register(job)
 
-    context(Raise<JobException.JobNotFound>)
+    context(Raise<JobError.JobNotFound<ID>>)
     suspend fun unregister(id: ID) {
         val job = jobs[id]
-        ensureNotNull(job) { JobException.JobNotFound(id) }
+        ensureNotNull(job) { JobError.JobNotFound(id) }
 
         job.supervisor.cancelAndJoin()
         jobs -= id

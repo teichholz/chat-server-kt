@@ -40,10 +40,11 @@ fun Message.record(): MessageRecord = MessageRecord()
 
 context(Raise<SqlError.RecordNotFound>, Configuration)
 suspend inline fun MessageRecord.domain(): Message {
+    val message = this
     val receiverRepository = di { inject<ReceiverRepositoryImpl>().value }
     return sql {
-        val sender = receiverRepository.load(this@domain.sender)
-        val receiver = receiverRepository.load(this@domain.receiver)
+        val sender = receiverRepository.load(message.sender)
+        val receiver = receiverRepository.load(message.receiver)
         Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain(), sent)
     }
 }

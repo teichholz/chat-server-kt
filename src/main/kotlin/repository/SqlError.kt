@@ -1,7 +1,13 @@
 package repository
 
 
-sealed class SqlError(override val message: String) : Throwable(message) {
-    data class RecordNotFound(val id: Any) : SqlError("Record not found: $id") {}
+sealed interface SqlError {
+
+    data class RecordNotFound(val id: Any): SqlError {
+        val message: String
+            get() = "Record not found: $id"
+    }
+
+    data class Unexpected(val exception: Throwable): SqlError
 }
 

@@ -9,7 +9,6 @@ import kotlinx.coroutines.future.await
 import org.jooq.Configuration
 import org.jooq.DSLContext
 import org.jooq.SQLDialect
-import org.jooq.UniqueKey
 import org.jooq.UpdatableRecord
 import org.jooq.impl.DSL
 import org.jooq.impl.TableImpl
