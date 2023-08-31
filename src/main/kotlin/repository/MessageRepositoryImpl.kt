@@ -6,10 +6,11 @@ import di.di
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.reactive.asFlow
+import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toKotlinLocalDateTime
 import model.Message
-import model.Tables.MESSAGE
+import model.tables.MessageJ.MESSAGE
 import model.tables.records.MessageRecord
 import org.jooq.Configuration
 import org.koin.core.annotation.Single
@@ -20,13 +21,18 @@ import reactor.core.publisher.Flux
 @Single
 class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
     context(Configuration)
-    override suspend fun unsent(receiverId: Int): Flow<MessageRecord> = sql {
-        val query = select()
-            .from(MESSAGE)
-            .where(MESSAGE.RECEIVER.eq(receiverId).and(MESSAGE.SENT.eq(false)))
+    override suspend fun messagesAfterTimestamp(receiverId: Int, after: LocalDateTime?): Flow<MessageRecord> {
+        val timestamp = after?.toJavaLocalDateTime() ?: java.time.LocalDateTime.MIN
 
-        Flux.from(query).asFlow().map {
-            it.into(MessageRecord::class.java)
+        return sql {
+            val query = select()
+                .from(MESSAGE)
+                .where(MESSAGE.RECEIVER.eq(receiverId).and(MESSAGE.DATE.gt(timestamp)))
+                .orderBy(MESSAGE.DATE.asc())
+
+            Flux.from(query).asFlow().map {
+                it.into(MessageRecord::class.java)
+            }
         }
     }
 }

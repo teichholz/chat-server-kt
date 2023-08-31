@@ -18,7 +18,7 @@ object Scheduler : KoinComponent {
     private val logger by LoggerDelegate()
     private val parentSupervisor = SupervisorJob()
 
-    val jobs by inject<JobRegistry<Int>>()
+    private val jobs by inject<JobRegistry<Int>>()
 
     context(ResourceScope)
     suspend fun install() {
@@ -26,15 +26,13 @@ object Scheduler : KoinComponent {
     }
 
     fun schedule(period: Duration, job: Job<Int>) {
-        val supervisor = SupervisorJob(parentSupervisor)
-
-        jobs += job.supervise(supervisor)
+        jobs += job.supervise(parentSupervisor)
 
         logger.info("Scheduling job ${job.name}")
         tickerFlow(period).onEach {
             job.run()
             logger.info("Job step ${it} ($period) for ${job.name} finished")
-        }.launchIn(CoroutineScope(supervisor + Dispatchers.IO))
+        }.launchIn(CoroutineScope(parentSupervisor + Dispatchers.IO))
     }
 
     private fun tickerFlow(period: Duration, initialDelay: Duration = Duration.ZERO) = flow {

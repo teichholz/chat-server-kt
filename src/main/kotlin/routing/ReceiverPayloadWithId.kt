@@ -1,5 +1,6 @@
 package routing
 
+import kotlinx.datetime.LocalDateTime
 import kotlinx.serialization.Serializable
 
 interface InSynch: HasId, HasName {}
@@ -19,10 +20,10 @@ data class ReceiverPayloadWithId(val id: Int, val name: String)
 data class ReceiverPayload(val name: String)
 
 @Serializable
-data class ReceiverPayloadRegister(override val name: String) : HasName
+data class ReceiverPayloadRegister(override val name: String, val timestamp: LocalDateTime?) : HasName
 
 @Serializable
-data class ReceiverPayloadLogin(override val id: Int, override val name: String) : InSynch
+data class ReceiverPayloadLogin(val name: String, val timestamp: LocalDateTime?)
 
 @Serializable
 data class ReceiverPayloadLogout(override val id: Int, override val name: String) : InSynch

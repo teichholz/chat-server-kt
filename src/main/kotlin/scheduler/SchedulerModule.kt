@@ -10,4 +10,7 @@ class SchedulerModule {
 
     @Single
     fun registry() = JobRegistry<Int>()
+
+    @Single
+    fun connections() = Connections()
 }

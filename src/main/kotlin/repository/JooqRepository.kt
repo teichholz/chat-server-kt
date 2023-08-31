@@ -32,7 +32,6 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val db: HikariDa
         val count = dsl()
             .deleteFrom(table).where(table.field(0, Int::class.java)!!.eq(id))
                 .executeAsync()
-                .asDeferred()
                 .await()
 
         ensure(count == 1) {

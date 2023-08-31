@@ -2,6 +2,8 @@ import arrow.continuations.SuspendApp
 import arrow.continuations.ktor.server
 import arrow.core.raise.either
 import arrow.fx.coroutines.resourceScope
+import di.di
+import io.ktor.http.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -13,10 +15,12 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
+import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.tables.records.ReceiverRecord
+import org.koin.core.component.inject
 import org.koin.ksp.generated.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
@@ -34,11 +38,13 @@ import routing.ReceiverPayloadRegister
 import routing.RequestValidator
 import routing.RoutingModule
 import routing.record
+import scheduler.Connections
 import scheduler.DeliverMessagesJob
 import scheduler.JobRegistry
+import scheduler.ReceiverSession
 import scheduler.Scheduler
 import scheduler.SchedulerModule
-import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 val logger = getLogger("Application")
 
@@ -51,6 +57,9 @@ fun main() = SuspendApp {
             routing()
         }
         Scheduler.install()
+        di { inject<Connections>().value }.install()
+
+        Scheduler.schedule(5.seconds, DeliverMessagesJob)
 
         awaitCancellation()
     }
@@ -87,13 +96,14 @@ fun Application.routing() {
 
     val messageRepository: MessageRepository by inject()
     val receiverRepository: ReceiverRepository by inject()
+    val connections: Connections by inject()
 
     val jobs by inject<JobRegistry<Int>>()
 
     install(RequestValidation) {
         val validator: RequestValidator by inject()
         validate<ReceiverPayloadRegister>(validator::validateNameNotTaken)
-        validate<ReceiverPayloadLogin>(validator::validateSynch)
+        //validate<ReceiverPayloadLogin>(validator::validateSynch)
         validate<ReceiverPayloadLogout>(validator::validateSynch)
     }
 
@@ -102,18 +112,34 @@ fun Application.routing() {
             val receiver = receiveDeserialized<ReceiverPayloadRegister>()
 
             transaction {
-                receiverRepository.save(ReceiverRecord(null, receiver.name)).domain()
-            }.run {
-                Scheduler.schedule(1.minutes, DeliverMessagesJob(this))
-                call.respond(id)
+                val record = receiverRepository.save(ReceiverRecord(null, receiver.name)).domain()
+                connections += record.id to ReceiverSession(record, receiver.timestamp, this@webSocket)
+            }
+        }
+
+        webSocket("/user/login") {
+            val receiver = receiveDeserialized<ReceiverPayloadLogin>()
+
+            transaction {
+                either {
+                    receiverRepository.findByName(receiver.name)
+                }.onLeft {
+                    call.respond(HttpStatusCode.BadRequest, "User name not found")
+                }.onRight {
+                    connections += it.id to ReceiverSession(it.domain(), receiver.timestamp, this@webSocket)
+                    call.respond(HttpStatusCode.OK, "Login successful")
+                }
             }
         }
 
         post("/user/logout") {
             val logout = call.receive<ReceiverPayloadLogout>()
-            either {
-                jobs.unregister(logout.id)
-            }.onLeft { logger.error("Error while stopping job $it") }
+            connections[logout.id]?.let {
+                it.session {
+                    close(CloseReason(CloseReason.Codes.NORMAL, "User logged out"))
+                }
+            }
+            connections -= logout.id
             call.respond("Logged out user $logout")
         }
 
@@ -122,7 +148,7 @@ fun Application.routing() {
             either {
                 transaction { receiverRepository.load(message.receiver) }
             }.onLeft {
-                call.respond("Receiver not found")
+                call.respond(HttpStatusCode.BadRequest, "Receiver not found")
             }.onRight {
                 transaction {
                     messageRepository.save(message.record())
