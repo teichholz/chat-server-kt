@@ -15,12 +15,12 @@ import model.tables.records.MessageRecord;
 
 import org.jooq.Field;
 import org.jooq.ForeignKey;
-import org.jooq.Function6;
+import org.jooq.Function5;
 import org.jooq.Identity;
 import org.jooq.Name;
 import org.jooq.Record;
 import org.jooq.Records;
-import org.jooq.Row6;
+import org.jooq.Row5;
 import org.jooq.Schema;
 import org.jooq.SelectField;
 import org.jooq.Table;
@@ -77,11 +77,6 @@ public class MessageJ extends TableImpl<MessageRecord> {
      * The column <code>chat.message.receiver</code>.
      */
     public final TableField<MessageRecord, Integer> RECEIVER = createField(DSL.name("receiver"), SQLDataType.INTEGER, this, "");
-
-    /**
-     * The column <code>chat.message.sent</code>.
-     */
-    public final TableField<MessageRecord, Boolean> SENT = createField(DSL.name("sent"), SQLDataType.BOOLEAN.defaultValue(DSL.field(DSL.raw("false"), SQLDataType.BOOLEAN)), this, "");
 
     private MessageJ(Name alias, Table<MessageRecord> aliased) {
         this(alias, aliased, null);
@@ -201,18 +196,18 @@ public class MessageJ extends TableImpl<MessageRecord> {
     }
 
     // -------------------------------------------------------------------------
-    // Row6 type methods
+    // Row5 type methods
     // -------------------------------------------------------------------------
 
     @Override
-    public Row6<Integer, String, LocalDateTime, Integer, Integer, Boolean> fieldsRow() {
-        return (Row6) super.fieldsRow();
+    public Row5<Integer, String, LocalDateTime, Integer, Integer> fieldsRow() {
+        return (Row5) super.fieldsRow();
     }
 
     /**
      * Convenience mapping calling {@link SelectField#convertFrom(Function)}.
      */
-    public <U> SelectField<U> mapping(Function6<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Function5<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(Records.mapping(from));
     }
 
@@ -220,7 +215,7 @@ public class MessageJ extends TableImpl<MessageRecord> {
      * Convenience mapping calling {@link SelectField#convertFrom(Class,
      * Function)}.
      */
-    public <U> SelectField<U> mapping(Class<U> toType, Function6<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? super Boolean, ? extends U> from) {
+    public <U> SelectField<U> mapping(Class<U> toType, Function5<? super Integer, ? super String, ? super LocalDateTime, ? super Integer, ? super Integer, ? extends U> from) {
         return convertFrom(toType, Records.mapping(from));
     }
 }

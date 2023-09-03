@@ -10,5 +10,5 @@ CREATE TABLE IF NOT EXISTS CHAT.message (
     content TEXT NOT NULL,
     date TIMESTAMP NOT NULL,
     sender INT REFERENCES CHAT.receiver(id),
-    receiver INT REFERENCES CHAT.receiver(id),
+    receiver INT REFERENCES CHAT.receiver(id)
 );

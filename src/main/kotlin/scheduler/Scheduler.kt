@@ -22,7 +22,10 @@ object Scheduler : KoinComponent {
 
     context(ResourceScope)
     suspend fun install() {
-        install({ parentSupervisor }) { jobSupervisor, _ -> jobSupervisor.cancelAndJoin() }
+        install({ parentSupervisor }) { jobSupervisor, _ ->
+            jobSupervisor.cancelAndJoin()
+            logger.info("Stoppe scheduler and scheduled jobs")
+        }
     }
 
     fun schedule(period: Duration, job: Job<Int>) {
@@ -31,7 +34,7 @@ object Scheduler : KoinComponent {
         logger.info("Scheduling job ${job.name}")
         tickerFlow(period).onEach {
             job.run()
-            logger.info("Job step ${it} ($period) for ${job.name} finished")
+            //logger.info("Job step ${it} ($period) for ${job.name} finished")
         }.launchIn(CoroutineScope(parentSupervisor + Dispatchers.IO))
     }
 

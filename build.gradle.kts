@@ -31,8 +31,8 @@ group = "coroutines"
 version = "1.0-SNAPSHOT"
 
 repositories {
-    mavenCentral()
     mavenLocal()
+    mavenCentral()
 }
 
 dependencies {
@@ -90,6 +90,9 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:5.6.0")
     testImplementation("io.kotest.extensions:kotest-extensions-koin:1.1.0")
     testImplementation("io.kotest:kotest-property:5.6.0")
+
+    // chat commons
+    implementation("chat.commons:chat-commons:1.2")
 
     // testcontainers
     testImplementation("io.kotest.extensions:kotest-extensions-testcontainers:2.0.2")

@@ -2,6 +2,14 @@ import arrow.continuations.SuspendApp
 import arrow.continuations.ktor.server
 import arrow.core.raise.either
 import arrow.fx.coroutines.resourceScope
+import chat.commons.protocol.Protocol
+import chat.commons.protocol.auth
+import chat.commons.protocol.isAuth
+import chat.commons.routing.MessagePayloadPOST
+import chat.commons.routing.ReceiverPayloadLogin
+import chat.commons.routing.ReceiverPayloadLogout
+import chat.commons.routing.ReceiverPayloadRegister
+import chat.commons.routing.ReceiverPayloadWithId
 import di.di
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.*
@@ -10,7 +18,6 @@ import io.ktor.server.application.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.plugins.requestvalidation.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -19,6 +26,8 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.serialization.json.Json
 import logger.getLogger
+import model.Receiver
+import model.record
 import model.tables.records.ReceiverRecord
 import org.koin.core.component.inject
 import org.koin.ksp.generated.module
@@ -31,13 +40,6 @@ import repository.ReceiverRepository
 import repository.RepositoryModule
 import repository.domain
 import repository.transaction
-import routing.MessagePayload
-import routing.ReceiverPayloadLogin
-import routing.ReceiverPayloadLogout
-import routing.ReceiverPayloadRegister
-import routing.RequestValidator
-import routing.RoutingModule
-import routing.record
 import scheduler.Connections
 import scheduler.DeliverMessagesJob
 import scheduler.JobRegistry
@@ -68,7 +70,7 @@ fun main() = SuspendApp {
 fun Application.di() {
     install(Koin) {
         slf4jLogger()
-        modules(RepositoryModule().module, RoutingModule().module, SchedulerModule().module)
+        modules(RepositoryModule().module, SchedulerModule().module)
         logger.info("Koin installed")
     }
 }
@@ -100,39 +102,67 @@ fun Application.routing() {
 
     val jobs by inject<JobRegistry<Int>>()
 
-    install(RequestValidation) {
-        val validator: RequestValidator by inject()
-        validate<ReceiverPayloadRegister>(validator::validateNameNotTaken)
-        //validate<ReceiverPayloadLogin>(validator::validateSynch)
-        validate<ReceiverPayloadLogout>(validator::validateSynch)
-    }
-
     routing {
-        webSocket("/user/register") {
-            val receiver = receiveDeserialized<ReceiverPayloadRegister>()
+        post("/users/register") {
+            val receiver = call.receive<ReceiverPayloadRegister>()
 
-            transaction {
-                val record = receiverRepository.save(ReceiverRecord(null, receiver.name)).domain()
-                connections += record.id to ReceiverSession(record, receiver.timestamp, this@webSocket)
-            }
-        }
-
-        webSocket("/user/login") {
-            val receiver = receiveDeserialized<ReceiverPayloadLogin>()
+            logger.info("Received register call with $receiver")
 
             transaction {
                 either {
-                    receiverRepository.findByName(receiver.name)
+                    receiverRepository.findByName(receiver.name).domain()
                 }.onLeft {
-                    call.respond(HttpStatusCode.BadRequest, "User name not found")
+                    val domain = receiverRepository.save(ReceiverRecord(null, receiver.name)).domain()
+                    val response = ReceiverPayloadWithId(domain.id, domain.name)
+                    call.respond(HttpStatusCode.OK, response)
                 }.onRight {
-                    connections += it.id to ReceiverSession(it.domain(), receiver.timestamp, this@webSocket)
-                    call.respond(HttpStatusCode.OK, "Login successful")
+                    call.respond(HttpStatusCode.BadRequest, "User name already taken")
                 }
             }
         }
 
-        post("/user/logout") {
+        post("/users/login") {
+            val receiver = call.receive<ReceiverPayloadLogin>()
+
+            logger.info("Received login call with $receiver")
+
+            transaction {
+                either {
+                    receiverRepository.findByName(receiver.name).domain()
+                }.onLeft {
+                    call.respond(HttpStatusCode.BadRequest, "User name not found")
+                }.onRight {
+                    val response = ReceiverPayloadWithId(it.id, it.name)
+                    call.respond(HttpStatusCode.OK, response)
+                }
+            }
+        }
+
+        webSocket("/chat") {
+            resourceScope {
+                install({
+                    val auth = receiveDeserialized<Protocol<*>>()
+
+                    if (!auth.isAuth()) {
+                        close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${auth.type}"))
+                    } else {
+                        auth as Protocol.AUTH
+                        val domain = Receiver(auth.payload.receiver.id, auth.payload.receiver.name)
+                        connections += auth.payload.receiver.id to ReceiverSession(domain, auth.payload.lastMessage, this@webSocket)
+                    }
+
+                    auth
+                }) {auth, _ ->
+                    auth.auth {
+                        connections -= it.payload.receiver.id
+                    }
+                }
+
+                awaitCancellation()
+            }
+        }
+
+        post("/users/logout") {
             val logout = call.receive<ReceiverPayloadLogout>()
             connections[logout.id]?.let {
                 it.session {
@@ -140,18 +170,20 @@ fun Application.routing() {
                 }
             }
             connections -= logout.id
-            call.respond("Logged out user $logout")
         }
 
+
         post("/send") {
-            val message = call.receive<MessagePayload>()
+            val message = call.receive<MessagePayloadPOST>()
             either {
-                transaction { receiverRepository.load(message.receiver) }
+                transaction {
+                    receiverRepository.findByName(message.to.name)
+                }
             }.onLeft {
                 call.respond(HttpStatusCode.BadRequest, "Receiver not found")
             }.onRight {
                 transaction {
-                    messageRepository.save(message.record())
+                    messageRepository.save(message.record(it.id))
                 }
                 call.respond("Message will be sent")
             }

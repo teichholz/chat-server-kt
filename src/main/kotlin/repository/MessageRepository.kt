@@ -13,4 +13,7 @@ import org.jooq.Configuration
 abstract class MessageRepository(db: HikariDataSource) : JooqRepository<MessageRecord>(db, Tables.MESSAGE) {
     context(Configuration)
     abstract suspend fun messagesAfterTimestamp(receiverId: Int, after: LocalDateTime?): Flow<MessageRecord>
+
+    context(Configuration)
+    abstract suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): Flow<MessageRecord>
 }

@@ -35,6 +35,21 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
             }
         }
     }
+
+    context(Configuration)
+    override suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): Flow<MessageRecord>  {
+        return sql {
+            val query = select()
+                .from(MESSAGE)
+                .where(MESSAGE.RECEIVER.eq(receiverId))
+                .orderBy(MESSAGE.DATE.asc())
+                .offset(offset)
+
+            Flux.from(query).asFlow().map {
+                it.into(MessageRecord::class.java)
+            }
+        }
+    }
 }
 
 fun Message.record(): MessageRecord = MessageRecord()
@@ -42,7 +57,6 @@ fun Message.record(): MessageRecord = MessageRecord()
     .setDate(date.toJavaLocalDateTime())
     .setSender(sender.id)
     .setReceiver(receiver.id)
-    .setSent(sent)
 
 context(Raise<SqlError.RecordNotFound>, Configuration)
 suspend inline fun MessageRecord.domain(): Message {
@@ -51,6 +65,6 @@ suspend inline fun MessageRecord.domain(): Message {
     return sql {
         val sender = receiverRepository.load(message.sender)
         val receiver = receiverRepository.load(message.receiver)
-        Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain(), sent)
+        Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain())
     }
 }
