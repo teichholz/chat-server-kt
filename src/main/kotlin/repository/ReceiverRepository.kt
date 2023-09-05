@@ -3,6 +3,7 @@ package repository
 import arrow.core.raise.Raise
 import arrow.core.raise.either
 import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.flow.Flow
 import model.Tables
 import model.tables.records.ReceiverRecord
 import org.jooq.Configuration
@@ -13,6 +14,9 @@ import org.jooq.Configuration
 abstract class ReceiverRepository(db: HikariDataSource) : JooqRepository<ReceiverRecord>(db, Tables.RECEIVER) {
     context(Raise<SqlError.RecordNotFound>, Configuration)
     abstract suspend fun findByName(name: String): ReceiverRecord
+
+    context(Configuration)
+    abstract suspend fun users(): Flow<ReceiverRecord>
 
     context(Configuration)
     suspend fun isNameTaken(name: String): Boolean {

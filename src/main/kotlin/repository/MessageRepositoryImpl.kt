@@ -13,6 +13,7 @@ import model.Message
 import model.tables.MessageJ.MESSAGE
 import model.tables.records.MessageRecord
 import org.jooq.Configuration
+import org.jooq.impl.DSL.orderBy
 import org.koin.core.annotation.Single
 import org.koin.core.component.inject
 import reactor.core.publisher.Flux
@@ -41,7 +42,7 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
         return sql {
             val query = select()
                 .from(MESSAGE)
-                .where(MESSAGE.RECEIVER.eq(receiverId))
+                .where(MESSAGE.RECEIVER.eq(receiverId) /*.or(MESSAGE.SENDER.eq(receiverId)) */)
                 .orderBy(MESSAGE.DATE.asc())
                 .offset(offset)
 

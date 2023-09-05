@@ -37,6 +37,7 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
                         session.session {
                             payload = MessagePayloadSocket(
                                 ReceiverPayload(message.receiver.name),
+                                ReceiverPayload(message.sender.name),
                                 message.content,
                                 message.date
                             )

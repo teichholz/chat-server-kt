@@ -6,6 +6,7 @@ import chat.commons.protocol.Protocol
 import chat.commons.protocol.auth
 import chat.commons.protocol.isAuth
 import chat.commons.routing.MessagePayloadPOST
+import chat.commons.routing.ReceiverPayload
 import chat.commons.routing.ReceiverPayloadLogin
 import chat.commons.routing.ReceiverPayloadLogout
 import chat.commons.routing.ReceiverPayloadRegister
@@ -24,6 +25,8 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.Receiver
@@ -151,6 +154,8 @@ fun Application.routing() {
                         connections += auth.payload.receiver.id to ReceiverSession(domain, auth.payload.lastMessage, this@webSocket)
                     }
 
+                    sendSerialized(Protocol.ACK())
+
                     auth
                 }) {auth, _ ->
                     auth.auth {
@@ -170,6 +175,16 @@ fun Application.routing() {
                 }
             }
             connections -= logout.id
+        }
+
+        get("/users/registered") {
+           val users = transaction {
+               receiverRepository.users().map {
+                   ReceiverPayload(it.name)
+               }.toList()
+           }
+
+            call.respond(users)
         }
 
 
