@@ -162,4 +162,5 @@ tasks.withType<KotlinCompile> {
 
 application {
     mainClass.set("Server")
+    applicationDefaultJvmArgs = listOf("-Dio.ktor.development=true")
 }

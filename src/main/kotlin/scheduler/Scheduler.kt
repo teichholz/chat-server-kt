@@ -29,13 +29,13 @@ object Scheduler : KoinComponent {
     }
 
     fun schedule(period: Duration, job: Job<Int>) {
-        jobs += job.supervise(parentSupervisor)
-
         logger.info("Scheduling job ${job.name}")
-        tickerFlow(period).onEach {
+        val cJob = tickerFlow(period).onEach {
             job.run()
             //logger.info("Job step ${it} ($period) for ${job.name} finished")
         }.launchIn(CoroutineScope(parentSupervisor + Dispatchers.IO))
+
+        jobs += job.supervise(cJob)
     }
 
     private fun tickerFlow(period: Duration, initialDelay: Duration = Duration.ZERO) = flow {

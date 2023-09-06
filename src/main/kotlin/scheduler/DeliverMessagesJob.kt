@@ -6,6 +6,12 @@ import chat.commons.protocol.MessagePayloadSocket
 import chat.commons.protocol.Protocol
 import chat.commons.routing.ReceiverPayload
 import io.ktor.server.websocket.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retry
 import logger.LoggerDelegate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -26,15 +32,15 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
         get() = 42
 
     override suspend fun run() {
-        connections.entries.forEach { (id, session) ->
+        connections.entries.forEach { (id, receiverSession) ->
             catch({
                 transaction {
-                    messageRepository.sortedMessagesWithOffset(id, session.lastMessage).collect {
+                    messageRepository.sortedMessagesWithOffset(id, receiverSession.lastMessage).onEach {
                         val message =
                             either { it.domain() }.getOrNull() ?: throw IllegalStateException("SHOULD NOT HAPPEN")
                         var payload: MessagePayloadSocket?
 
-                        session.session {
+                        receiverSession.session {
                             payload = MessagePayloadSocket(
                                 ReceiverPayload(message.receiver.name),
                                 ReceiverPayload(message.sender.name),
@@ -42,17 +48,22 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
                                 message.date
                             )
                             sendSerialized(payload)
-                            val ack: Protocol<*> = receiveDeserialized()
-                            when (ack.type) {
-                                "ACK" -> {}
+                            val protocol: Protocol = receiveDeserialized()
+                            when (protocol) {
+                                is Protocol.ACK -> {
+                                    if (protocol.payload != receiverSession.lastMessage + 1) {
+                                        throw IllegalStateException("ACK not in order")
+                                    }
+                                }
                                 else -> throw IllegalStateException("SHOULD NOT HAPPEN")
                             }
                             connections.incrementMessageCount(id)
                         }
-                    }
+                    }.retry(3).catch {
+                        logger.error("Error trying to send messages: $it");
+                    }.launchIn(CoroutineScope(Dispatchers.IO))
                 }
             }) {
-                connections -= id
                 logger.error("Error trying to send messages: $it");
             }
         }

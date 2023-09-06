@@ -3,6 +3,7 @@ import arrow.continuations.ktor.server
 import arrow.core.raise.either
 import arrow.fx.coroutines.resourceScope
 import chat.commons.protocol.Protocol
+import chat.commons.protocol.ack
 import chat.commons.protocol.auth
 import chat.commons.protocol.isAuth
 import chat.commons.routing.MessagePayloadPOST
@@ -27,10 +28,13 @@ import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.isActive
+import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.Receiver
 import model.record
+import model.tables.records.MessageRecord
 import model.tables.records.ReceiverRecord
 import org.koin.core.component.inject
 import org.koin.ksp.generated.module
@@ -45,6 +49,7 @@ import repository.domain
 import repository.transaction
 import scheduler.Connections
 import scheduler.DeliverMessagesJob
+import scheduler.DeliverMessagesJob.connections
 import scheduler.JobRegistry
 import scheduler.ReceiverSession
 import scheduler.Scheduler
@@ -134,38 +139,50 @@ fun Application.routing() {
                     receiverRepository.findByName(receiver.name).domain()
                 }.onLeft {
                     call.respond(HttpStatusCode.BadRequest, "User name not found")
+                    logger.info("User name ${receiver.name} not found");
                 }.onRight {
                     val response = ReceiverPayloadWithId(it.id, it.name)
                     call.respond(HttpStatusCode.OK, response)
+                    logger.info("User properly logged in: $response")
                 }
             }
         }
 
-        webSocket("/chat") {
-            resourceScope {
-                install({
-                    val auth = receiveDeserialized<Protocol<*>>()
+        webSocket("/receive") {
+            authenticated(this) {}
+        }
 
-                    if (!auth.isAuth()) {
-                        close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${auth.type}"))
-                    } else {
-                        auth as Protocol.AUTH
-                        val domain = Receiver(auth.payload.receiver.id, auth.payload.receiver.name)
-                        connections += auth.payload.receiver.id to ReceiverSession(domain, auth.payload.lastMessage, this@webSocket)
-                    }
+        webSocket("/send") {
+            authenticated(this) {
+                while (isActive) {
+                    val message = receiveDeserialized<Protocol.MESSAGE>()
+                    val receiver = message.payload.to
+                    val sender = message.payload.from
+                    val content = message.payload.message
+                    val date = message.payload.sent
 
-                    sendSerialized(Protocol.ACK())
+                    logger.info("Received message from $sender to $receiver with content $content")
 
-                    auth
-                }) {auth, _ ->
-                    auth.auth {
-                        connections -= it.payload.receiver.id
+                    either {
+                        transaction {
+                            val receiverRecord = receiverRepository.findByName(receiver.name)
+                            val senderRecord = receiverRepository.findByName(sender.name)
+                            messageRepository.save(
+                                MessageRecord()
+                                    .setContent(content)
+                                    .setDate(date.toJavaLocalDateTime())
+                                    .setSender(senderRecord.id)
+                                    .setReceiver(receiverRecord.id)
+                            )
+                        }
+                        sendSerialized(ack {})
+                    }.onLeft {
+                        logger.error("Error saving received message: $it")
                     }
                 }
-
-                awaitCancellation()
             }
         }
+
 
         post("/users/logout") {
             val logout = call.receive<ReceiverPayloadLogout>()
@@ -178,11 +195,11 @@ fun Application.routing() {
         }
 
         get("/users/registered") {
-           val users = transaction {
-               receiverRepository.users().map {
-                   ReceiverPayload(it.name)
-               }.toList()
-           }
+            val users = transaction {
+                receiverRepository.users().map {
+                    ReceiverPayload(it.name)
+                }.toList()
+            }
 
             call.respond(users)
         }
@@ -227,5 +244,39 @@ fun Application.routing() {
             }
         }*/
 
+    }
+}
+
+
+suspend fun authenticated(
+    session: DefaultWebSocketServerSession,
+    block: suspend DefaultWebSocketServerSession.() -> Unit
+): Nothing {
+    var auth: Protocol.AUTH? = null
+
+    try {
+        val protocol = session.receiveDeserialized<Protocol>()
+
+        if (!protocol.isAuth()) {
+            session.close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${protocol.kind}"))
+            throw IllegalStateException("Expected AUTH Message but got ${protocol.kind}")
+        }
+
+        auth = protocol as Protocol.AUTH
+        val domain = Receiver(protocol.payload.receiver.id, protocol.payload.receiver.name)
+        connections += protocol.payload.receiver.id to ReceiverSession(domain, protocol.payload.lastMessage, session)
+        session.sendSerialized(ack {})
+
+        block.invoke(session)
+
+        awaitCancellation()
+    } catch (e: Throwable) {
+        logger.error("Error in authenticated block: $e")
+        throw e
+    } finally {
+        session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server is shutting down"))
+        auth?.auth {
+            connections -= it.payload.receiver.id
+        }
     }
 }

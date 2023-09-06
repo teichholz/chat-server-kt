@@ -21,7 +21,7 @@ class ReceiverRepositoryImpl(db: HikariDataSource) : ReceiverRepository(db) {
     context(Raise<SqlError.RecordNotFound>, Configuration)
     override suspend fun findByName(name: String): ReceiverRecord {
         val dsl = dsl();
-        val records = dsl.fetchAsync(Tables.RECEIVER, Tables.RECEIVER.NAME.eq("name")).await()
+        val records = dsl.fetchAsync(Tables.RECEIVER, Tables.RECEIVER.NAME.eq(name)).await()
 
         ensure(records.size == 1) {
             raise(SqlError.RecordNotFound(name))
