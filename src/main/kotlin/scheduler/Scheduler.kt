@@ -24,7 +24,7 @@ object Scheduler : KoinComponent {
     suspend fun install() {
         install({ parentSupervisor }) { jobSupervisor, _ ->
             jobSupervisor.cancelAndJoin()
-            logger.info("Stoppe scheduler and scheduled jobs")
+            logger.info("Stop scheduler and scheduled jobs")
         }
     }
 

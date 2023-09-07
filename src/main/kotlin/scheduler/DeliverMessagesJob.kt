@@ -2,6 +2,8 @@ package scheduler
 
 import arrow.core.raise.catch
 import arrow.core.raise.either
+import arrow.resilience.Schedule
+import arrow.resilience.retry
 import chat.commons.protocol.MessagePayloadSocket
 import chat.commons.protocol.Protocol
 import chat.commons.routing.ReceiverPayload
@@ -11,7 +13,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.flow.retry
 import logger.LoggerDelegate
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -59,9 +60,9 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
                             }
                             connections.incrementMessageCount(id)
                         }
-                    }.retry(3).catch {
-                        logger.error("Error trying to send messages: $it");
-                    }.launchIn(CoroutineScope(Dispatchers.IO))
+                    }.catch {
+                        logger.error("Error trying to send messages: $it")
+                    }.retry(Schedule.recurs(3)).launchIn(CoroutineScope(Dispatchers.IO))
                 }
             }) {
                 logger.error("Error trying to send messages: $it");

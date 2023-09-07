@@ -149,11 +149,11 @@ fun Application.routing() {
         }
 
         webSocket("/receive") {
-            authenticated(this) {}
+            authenticated {}
         }
 
         webSocket("/send") {
-            authenticated(this) {
+            authenticated {
                 while (isActive) {
                     val message = receiveDeserialized<Protocol.MESSAGE>()
                     val receiver = message.payload.to
@@ -248,33 +248,32 @@ fun Application.routing() {
 }
 
 
-suspend fun authenticated(
-    session: DefaultWebSocketServerSession,
+suspend fun DefaultWebSocketServerSession.authenticated(
     block: suspend DefaultWebSocketServerSession.() -> Unit
 ): Nothing {
     var auth: Protocol.AUTH? = null
 
     try {
-        val protocol = session.receiveDeserialized<Protocol>()
+        val protocol = receiveDeserialized<Protocol>()
 
         if (!protocol.isAuth()) {
-            session.close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${protocol.kind}"))
+            close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${protocol.kind}"))
             throw IllegalStateException("Expected AUTH Message but got ${protocol.kind}")
         }
 
         auth = protocol as Protocol.AUTH
         val domain = Receiver(protocol.payload.receiver.id, protocol.payload.receiver.name)
-        connections += protocol.payload.receiver.id to ReceiverSession(domain, protocol.payload.lastMessage, session)
-        session.sendSerialized(ack {})
+        connections += protocol.payload.receiver.id to ReceiverSession(domain, protocol.payload.lastMessage, this)
+        sendSerialized(ack {})
 
-        block.invoke(session)
+        block()
 
         awaitCancellation()
     } catch (e: Throwable) {
         logger.error("Error in authenticated block: $e")
         throw e
     } finally {
-        session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server is shutting down"))
+        close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server is shutting down"))
         auth?.auth {
             connections -= it.payload.receiver.id
         }
