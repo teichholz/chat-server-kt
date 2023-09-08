@@ -14,16 +14,16 @@ class SerializationTest : FunSpec() {
                 classDiscriminator = "key"
             }
 
-            val auth = auth {
-                payload = AuthPayloadSocket(receiver = ReceiverPayloadWithId(0, "Test"))
-            }
-
-            val string = json.encodeToString(auth)
-
-            val deserialized: Protocol = json.decodeFromString(string)
-
-            println(deserialized is Protocol.AUTH)
-            println((deserialized as Protocol.AUTH).payload)
+//            val auth = auth {
+//                payload = AuthPayloadSocket(receiver = ReceiverPayloadWithId(0, "Test"))
+//            }
+//
+//            val string = json.encodeToString(auth)
+//
+//            val deserialized: Protocol = json.decodeFromString(string)
+//
+//            println(deserialized is Protocol.AUTH)
+//            println((deserialized as Protocol.AUTH).payload)
         }
     }
 }

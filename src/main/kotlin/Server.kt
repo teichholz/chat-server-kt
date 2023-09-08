@@ -17,9 +17,11 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
+import io.ktor.server.auth.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -103,11 +105,31 @@ fun Application.routing() {
             isLenient = true
         })
     }
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            call.respondText(text = "500: $cause", status = HttpStatusCode.InternalServerError)
+        }
+    }
 
     val messageRepository: MessageRepository by inject()
     val receiverRepository: ReceiverRepository by inject()
-    val connections: Connections by inject()
 
+    install(Authentication) {
+        basic("basic-auth") {
+            realm = "Access to the '/' path"
+            validate { credentials ->
+                either {
+                    transaction {
+                        receiverRepository.findByName(credentials.name)
+                    }
+                }.fold({ null }) {
+                    Receiver(it.id, it.name)
+                }
+            }
+        }
+    }
+
+    val connections: Connections by inject()
     val jobs by inject<JobRegistry<Int>>()
 
     routing {
@@ -148,122 +170,114 @@ fun Application.routing() {
             }
         }
 
-        webSocket("/receive") {
-            authenticated {}
+        authenticate("basic-auth") {
+            webSocket("/receive") {
+                keepConnection {}
+            }
         }
 
-        webSocket("/send") {
-            authenticated {
-                while (isActive) {
-                    val message = receiveDeserialized<Protocol.MESSAGE>()
-                    val receiver = message.payload.to
-                    val sender = message.payload.from
-                    val content = message.payload.message
-                    val date = message.payload.sent
+        authenticate("basic-auth") {
+            webSocket("/send") {
+                keepConnection {
+                    while (isActive) {
+                        val message = receiveDeserialized<Protocol.MESSAGE>()
+                        val receiver = message.payload.to
+                        val sender = message.payload.from
+                        val content = message.payload.message
+                        val date = message.payload.sent
 
-                    logger.info("Received message from $sender to $receiver with content $content")
+                        logger.info("Received message from $sender to $receiver with content $content")
 
-                    either {
-                        transaction {
-                            val receiverRecord = receiverRepository.findByName(receiver.name)
-                            val senderRecord = receiverRepository.findByName(sender.name)
-                            messageRepository.save(
-                                MessageRecord()
-                                    .setContent(content)
-                                    .setDate(date.toJavaLocalDateTime())
-                                    .setSender(senderRecord.id)
-                                    .setReceiver(receiverRecord.id)
-                            )
+                        either {
+                            transaction {
+                                val receiverRecord = receiverRepository.findByName(receiver.name)
+                                val senderRecord = receiverRepository.findByName(sender.name)
+                                messageRepository.save(
+                                    MessageRecord()
+                                        .setContent(content)
+                                        .setDate(date.toJavaLocalDateTime())
+                                        .setSender(senderRecord.id)
+                                        .setReceiver(receiverRecord.id)
+                                )
+                            }
+                            sendSerialized(ack {})
+                        }.onLeft {
+                            logger.error("Error saving received message: $it")
                         }
-                        sendSerialized(ack {})
-                    }.onLeft {
-                        logger.error("Error saving received message: $it")
                     }
                 }
             }
         }
 
 
-        post("/users/logout") {
-            val logout = call.receive<ReceiverPayloadLogout>()
-            connections[logout.id]?.let {
-                it.session {
-                    close(CloseReason(CloseReason.Codes.NORMAL, "User logged out"))
+        authenticate("basic-auth") {
+            post("/users/logout") {
+                val logout = call.receive<ReceiverPayloadLogout>()
+                connections[logout.id]?.let {
+                    it.session {
+                        close(CloseReason(CloseReason.Codes.NORMAL, "User logged out"))
+                    }
                 }
+                connections -= logout.id
             }
-            connections -= logout.id
         }
 
-        get("/users/registered") {
-            val users = transaction {
-                receiverRepository.users().map {
-                    ReceiverPayload(it.name)
-                }.toList()
-            }
-
-            call.respond(users)
-        }
-
-
-        post("/send") {
-            val message = call.receive<MessagePayloadPOST>()
-            either {
-                transaction {
-                    receiverRepository.findByName(message.to.name)
+        authenticate("basic-auth") {
+            get("/users/registered") {
+                val users = transaction {
+                    receiverRepository.users().map {
+                        ReceiverPayload(it.name)
+                    }.toList()
                 }
-            }.onLeft {
-                call.respond(HttpStatusCode.BadRequest, "Receiver not found")
-            }.onRight {
-                transaction {
-                    messageRepository.save(message.record(it.id))
-                }
-                call.respond("Message will be sent")
+
+                call.respond(users)
             }
         }
 
         /*post("/user/configure") {
-            val config: ReceiverPayloadConfiguration = call.receive()
-            either {
-                transaction {
-                    val receiver = receiverRepository.load(config.from.id)
-                    if (config.from.equals(receiver.payload())) {
-                        // TODO: Name should be unique
-                        receiver.name = config.to.name
-                        receiverRepository.save(receiver)
-                    } else {
-                        raise("User mismatch")
-                    }
+        val config: ReceiverPayloadConfiguration = call.receive()
+        either {
+            transaction {
+                val receiver = receiverRepository.load(config.from.id)
+                if (config.from.equals(receiver.payload())) {
+                    // TODO: Name should be unique
+                    receiver.name = config.to.name
+                    receiverRepository.save(receiver)
+                } else {
+                    raise("User mismatch")
                 }
-            }.onLeft {
-                when (it) {
-                    is String -> call.respond(it)
-                    is SqlError.RecordNotFound -> call.respond("User Not Found")
-                }
-            }.onRight {
-                call.respond("Configured user")
             }
-        }*/
+        }.onLeft {
+            when (it) {
+                is String -> call.respond(it)
+                is SqlError.RecordNotFound -> call.respond("User Not Found")
+            }
+        }.onRight {
+            call.respond("Configured user")
+        }
+    }*/
 
     }
 }
 
 
-suspend fun DefaultWebSocketServerSession.authenticated(
+context(Route)
+suspend fun DefaultWebSocketServerSession.keepConnection(
     block: suspend DefaultWebSocketServerSession.() -> Unit
 ): Nothing {
+    val principal: Receiver = call.principal()!!
     var auth: Protocol.AUTH? = null
 
     try {
         val protocol = receiveDeserialized<Protocol>()
 
         if (!protocol.isAuth()) {
-            close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got ${protocol.kind}"))
-            throw IllegalStateException("Expected AUTH Message but got ${protocol.kind}")
+            close(CloseReason(CloseReason.Codes.PROTOCOL_ERROR, "Expected AUTH Message but got $protocol"))
+            throw IllegalStateException("Expected AUTH Message but got $protocol")
         }
 
         auth = protocol as Protocol.AUTH
-        val domain = Receiver(protocol.payload.receiver.id, protocol.payload.receiver.name)
-        connections += protocol.payload.receiver.id to ReceiverSession(domain, protocol.payload.lastMessage, this)
+        connections += principal.id to ReceiverSession(principal, protocol.payload.lastMessage, this)
         sendSerialized(ack {})
 
         block()
@@ -275,7 +289,7 @@ suspend fun DefaultWebSocketServerSession.authenticated(
     } finally {
         close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server is shutting down"))
         auth?.auth {
-            connections -= it.payload.receiver.id
+            connections -= principal.id
         }
     }
 }

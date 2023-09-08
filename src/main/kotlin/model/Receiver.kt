@@ -1,3 +1,5 @@
 package model
 
-data class Receiver(val id: Int, val name: String) {}
+import io.ktor.server.auth.*
+
+data class Receiver(val id: Int, val name: String) : Principal {}

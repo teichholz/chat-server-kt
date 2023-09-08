@@ -1,6 +1,5 @@
 package scheduler
 
-import arrow.core.raise.catch
 import arrow.core.raise.either
 import arrow.resilience.Schedule
 import arrow.resilience.retry
@@ -34,39 +33,38 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
 
     override suspend fun run() {
         connections.entries.forEach { (id, receiverSession) ->
-            catch({
-                transaction {
-                    messageRepository.sortedMessagesWithOffset(id, receiverSession.lastMessage).onEach {
-                        val message =
-                            either { it.domain() }.getOrNull() ?: throw IllegalStateException("SHOULD NOT HAPPEN")
-                        var payload: MessagePayloadSocket?
-
-                        receiverSession.session {
-                            payload = MessagePayloadSocket(
-                                ReceiverPayload(message.receiver.name),
-                                ReceiverPayload(message.sender.name),
-                                message.content,
-                                message.date
-                            )
-                            sendSerialized(payload)
-                            val protocol: Protocol = receiveDeserialized()
-                            when (protocol) {
-                                is Protocol.ACK -> {
-                                    if (protocol.payload != receiverSession.lastMessage + 1) {
-                                        throw IllegalStateException("ACK not in order")
-                                    }
-                                }
-                                else -> throw IllegalStateException("SHOULD NOT HAPPEN")
-                            }
-                            connections.incrementMessageCount(id)
-                        }
-                    }.catch {
-                        logger.error("Error trying to send messages: $it")
-                    }.retry(Schedule.recurs(3)).launchIn(CoroutineScope(Dispatchers.IO))
+            transaction {
+                messageRepository.sortedMessagesWithOffset(id, receiverSession.lastMessage)
+            }.onEach {
+                val message = transaction {
+                    either { it.domain() }.getOrNull() ?: throw IllegalStateException("SHOULD NOT HAPPEN")
                 }
-            }) {
-                logger.error("Error trying to send messages: $it");
-            }
+                var payload: MessagePayloadSocket?
+
+                receiverSession.session {
+                    payload = MessagePayloadSocket(
+                        ReceiverPayload(message.receiver.name),
+                        ReceiverPayload(message.sender.name),
+                        message.content,
+                        message.date
+                    )
+                    sendSerialized(payload)
+                    val protocol: Protocol = receiveDeserialized()
+                    when (protocol) {
+                        is Protocol.ACK -> {
+                            if (protocol.payload != receiverSession.lastMessage + 1) {
+                                throw IllegalStateException("ACK not in order")
+                            }
+                        }
+
+                        else -> throw IllegalStateException("SHOULD NOT HAPPEN")
+                    }
+                    connections.incrementMessageCount(id)
+                }
+            }.catch {
+                logger.error("Error trying to send messages: $it")
+            }.retry(Schedule.recurs(3)).launchIn(CoroutineScope(Dispatchers.IO))
         }
     }
+
 }
