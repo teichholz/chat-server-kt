@@ -5,6 +5,7 @@ import arrow.resilience.Schedule
 import arrow.resilience.retry
 import chat.commons.protocol.MessagePayloadSocket
 import chat.commons.protocol.Protocol
+import chat.commons.protocol.message
 import chat.commons.routing.ReceiverPayload
 import io.ktor.server.websocket.*
 import kotlinx.coroutines.CoroutineScope
@@ -36,19 +37,19 @@ object DeliverMessagesJob : Job<Int>, KoinComponent {
             transaction {
                 messageRepository.sortedMessagesWithOffset(id, receiverSession.lastMessage)
             }.onEach {
-                val message = transaction {
+                val msg = transaction {
                     either { it.domain() }.getOrNull() ?: throw IllegalStateException("SHOULD NOT HAPPEN")
                 }
-                var payload: MessagePayloadSocket?
-
                 receiverSession.session {
-                    payload = MessagePayloadSocket(
-                        ReceiverPayload(message.receiver.name),
-                        ReceiverPayload(message.sender.name),
-                        message.content,
-                        message.date
-                    )
-                    sendSerialized(payload)
+                    sendSerialized(message {
+                        this.payload = MessagePayloadSocket(
+                            ReceiverPayload(msg.sender.name),
+                            ReceiverPayload(msg.receiver.name),
+                            msg.content,
+                            msg.date
+                        )
+                    })
+
                     val protocol: Protocol = receiveDeserialized()
                     when (protocol) {
                         is Protocol.ACK -> {

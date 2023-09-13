@@ -2,11 +2,14 @@ import arrow.continuations.SuspendApp
 import arrow.continuations.ktor.server
 import arrow.core.raise.either
 import arrow.fx.coroutines.resourceScope
+import arrow.resilience.Schedule
+import arrow.resilience.retry
+import chat.commons.protocol.MessagePayloadSocket
 import chat.commons.protocol.Protocol
 import chat.commons.protocol.ack
 import chat.commons.protocol.auth
 import chat.commons.protocol.isAuth
-import chat.commons.routing.MessagePayloadPOST
+import chat.commons.protocol.message
 import chat.commons.routing.ReceiverPayload
 import chat.commons.routing.ReceiverPayloadLogin
 import chat.commons.routing.ReceiverPayloadLogout
@@ -18,6 +21,7 @@ import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.server.logging.*
 import io.ktor.server.netty.*
 import io.ktor.server.plugins.callloging.*
 import io.ktor.server.plugins.contentnegotiation.*
@@ -27,15 +31,20 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.isActive
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.serialization.json.Json
 import logger.getLogger
 import model.Receiver
-import model.record
 import model.tables.records.MessageRecord
 import model.tables.records.ReceiverRecord
 import org.koin.core.component.inject
@@ -49,14 +58,15 @@ import repository.ReceiverRepository
 import repository.RepositoryModule
 import repository.domain
 import repository.transaction
+import repository.unsafeDomain
 import scheduler.Connections
 import scheduler.DeliverMessagesJob
 import scheduler.DeliverMessagesJob.connections
+import scheduler.DeliverMessagesJob.id
 import scheduler.JobRegistry
 import scheduler.ReceiverSession
 import scheduler.Scheduler
 import scheduler.SchedulerModule
-import kotlin.time.Duration.Companion.seconds
 
 val logger = getLogger("Application")
 
@@ -71,7 +81,7 @@ fun main() = SuspendApp {
         Scheduler.install()
         di { inject<Connections>().value }.install()
 
-        Scheduler.schedule(5.seconds, DeliverMessagesJob)
+        //Scheduler.schedule(5.seconds, DeliverMessagesJob)
 
         awaitCancellation()
     }
@@ -88,7 +98,16 @@ fun Application.di() {
 fun Application.logging() {
     install(CallLogging) {
         level = Level.INFO
-        filter { call -> call.request.path().startsWith("/") }
+        format { call ->
+            call.request.toLogString()
+            val path = call.request.path()
+            val status = call.response.status()
+            val httpMethod = call.request.httpMethod.value
+            val authorization = call.request.authorization()
+            val userAgent = call.request.headers["User-Agent"]
+            "Path: $path, Status: $status, HTTP method: $httpMethod, Authorization: $authorization, User agent: $userAgent"
+        }
+
     }
 }
 
@@ -107,6 +126,7 @@ fun Application.routing() {
     }
     install(StatusPages) {
         exception<Throwable> { call, cause ->
+            logger.error("Error in call: $call", cause)
             call.respondText(text = "500: $cause", status = HttpStatusCode.InternalServerError)
         }
     }
@@ -172,7 +192,44 @@ fun Application.routing() {
 
         authenticate("basic-auth") {
             webSocket("/receive") {
-                keepConnection {}
+                keepConnection {
+                    val session = connections[call.principal<Receiver>()?.id]!!
+
+                    while (isActive) {
+                        transaction {
+                            // TODO something wrong here
+                            DeliverMessagesJob.messageRepository.sortedMessagesWithOffset(id, session.lastMessage)
+                        }.onEach {
+                            logger.info("Found unsent message: $it")
+                            val msg = it.unsafeDomain()
+                            sendSerialized(message {
+                                this.payload = MessagePayloadSocket(
+                                    ReceiverPayload(msg.sender.name),
+                                    ReceiverPayload(msg.receiver.name),
+                                    msg.content,
+                                    msg.date
+                                )
+                            })
+
+                            val protocol: Protocol = receiveDeserialized()
+                            logger.info("Send message and received ACK: $protocol")
+                            when (protocol) {
+                                is Protocol.ACK -> {
+                                    if (protocol.payload != session.lastMessage + 1) {
+                                        throw IllegalStateException("ACK not in order")
+                                    }
+                                }
+
+                                else -> throw IllegalStateException("SHOULD NOT HAPPEN")
+                            }
+                            DeliverMessagesJob.connections.incrementMessageCount(id)
+                        }.catch {
+                            DeliverMessagesJob.logger.error("Error trying to send messages: $it")
+                        }.retry(Schedule.recurs(3)).launchIn(CoroutineScope(Dispatchers.IO))
+
+                        delay(5000)
+                    }
+                }
             }
         }
 
@@ -193,11 +250,12 @@ fun Application.routing() {
                                 val receiverRecord = receiverRepository.findByName(receiver.name)
                                 val senderRecord = receiverRepository.findByName(sender.name)
                                 messageRepository.save(
-                                    MessageRecord()
-                                        .setContent(content)
-                                        .setDate(date.toJavaLocalDateTime())
-                                        .setSender(senderRecord.id)
-                                        .setReceiver(receiverRecord.id)
+                                    MessageRecord().apply {
+                                        this.content = content
+                                        this.date = date.toJavaLocalDateTime()
+                                        this.sender = senderRecord.id
+                                        this.receiver = receiverRecord.id
+                                    }
                                 )
                             }
                             sendSerialized(ack {})

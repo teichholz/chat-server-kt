@@ -4,7 +4,6 @@ import arrow.core.raise.Raise
 import arrow.core.raise.ensure
 import com.zaxxer.hikari.HikariDataSource
 import di.di
-import kotlinx.coroutines.future.asDeferred
 import kotlinx.coroutines.future.await
 import org.jooq.Configuration
 import org.jooq.DSLContext
@@ -41,11 +40,7 @@ abstract class JooqRepository<RECORD : UpdatableRecord<RECORD>>(val db: HikariDa
 
     context(Raise<SqlError.RecordNotFound>, Configuration)
     override suspend fun load(id: Int): RECORD {
-        val await = dsl().fetchAsync(table, table.field(0, Int::class.java)!!.eq(id)).await()
-        ensure(await.size == 1) {
-            raise(SqlError.RecordNotFound(id))
-        }
-        return await.first()
+        return dsl().fetchOne(table, table.field(0, Int::class.java)!!.eq(id)) ?: raise(SqlError.RecordNotFound(id))
     }
 
 

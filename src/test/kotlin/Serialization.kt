@@ -11,19 +11,19 @@ class SerializationTest : FunSpec() {
         test("Protocol test") {
             val json = Json {
                 isLenient = true
-                classDiscriminator = "key"
+                //classDiscriminator = "key"
             }
 
-//            val auth = auth {
-//                payload = AuthPayloadSocket(receiver = ReceiverPayloadWithId(0, "Test"))
-//            }
-//
-//            val string = json.encodeToString(auth)
-//
-//            val deserialized: Protocol = json.decodeFromString(string)
-//
-//            println(deserialized is Protocol.AUTH)
-//            println((deserialized as Protocol.AUTH).payload)
+            val auth = auth {
+                payload = AuthPayloadSocket(0)
+            }
+
+            val string = json.encodeToString(auth)
+
+            val deserialized: Protocol = json.decodeFromString(string)
+
+            println(deserialized is Protocol.AUTH)
+            println((deserialized as Protocol.AUTH).payload)
         }
     }
 }

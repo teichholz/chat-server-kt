@@ -1,6 +1,7 @@
 package repository
 
 import arrow.core.raise.Raise
+import arrow.core.raise.either
 import com.zaxxer.hikari.HikariDataSource
 import di.di
 import kotlinx.coroutines.flow.Flow
@@ -13,7 +14,6 @@ import model.Message
 import model.tables.MessageJ.MESSAGE
 import model.tables.records.MessageRecord
 import org.jooq.Configuration
-import org.jooq.impl.DSL.orderBy
 import org.koin.core.annotation.Single
 import org.koin.core.component.inject
 import reactor.core.publisher.Flux
@@ -38,7 +38,7 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
     }
 
     context(Configuration)
-    override suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): Flow<MessageRecord>  {
+    override suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): Flow<MessageRecord> {
         return sql {
             val query = select()
                 .from(MESSAGE)
@@ -67,5 +67,19 @@ suspend inline fun MessageRecord.domain(): Message {
         val sender = receiverRepository.load(message.sender)
         val receiver = receiverRepository.load(message.receiver)
         Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain())
+    }
+}
+
+suspend inline fun MessageRecord.unsafeDomain(): Message {
+    val message = this
+    val receiverRepository = di { inject<ReceiverRepositoryImpl>().value }
+    return transaction {
+        sql {
+            either {
+                val sender = receiverRepository.load(message.sender)
+                val receiver = receiverRepository.load(message.receiver)
+                Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain())
+            }.fold({ throw IllegalStateException("SHOULD NOT HAPPEN") }) { it }
+        }
     }
 }

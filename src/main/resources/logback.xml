@@ -1,0 +1,17 @@
+<configuration scan="true" scanPeriod="15 seconds">
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+    <logger name="org.eclipse.jetty" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+
+    <!-- Sql execution -->
+    <Logger name="org.jooq.tools.LoggerListener" level="info" />
+    <!-- Other jOOQ related debug log output -->
+    <Logger name="org.jooq" level="info" />
+</configuration>
