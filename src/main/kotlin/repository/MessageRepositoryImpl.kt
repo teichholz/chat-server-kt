@@ -4,9 +4,6 @@ import arrow.core.raise.Raise
 import arrow.core.raise.either
 import com.zaxxer.hikari.HikariDataSource
 import di.di
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.reactive.asFlow
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.toJavaLocalDateTime
 import kotlinx.datetime.toKotlinLocalDateTime
@@ -16,13 +13,12 @@ import model.tables.records.MessageRecord
 import org.jooq.Configuration
 import org.koin.core.annotation.Single
 import org.koin.core.component.inject
-import reactor.core.publisher.Flux
 
 
 @Single
 class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
     context(Configuration)
-    override suspend fun messagesAfterTimestamp(receiverId: Int, after: LocalDateTime?): Flow<MessageRecord> {
+    override suspend fun messagesAfterTimestamp(receiverId: Int, after: LocalDateTime?): List<MessageRecord> {
         val timestamp = after?.toJavaLocalDateTime() ?: java.time.LocalDateTime.MIN
 
         return sql {
@@ -31,14 +27,14 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
                 .where(MESSAGE.RECEIVER.eq(receiverId).and(MESSAGE.DATE.gt(timestamp)))
                 .orderBy(MESSAGE.DATE.asc())
 
-            Flux.from(query).asFlow().map {
+            query.map {
                 it.into(MessageRecord::class.java)
             }
         }
     }
 
     context(Configuration)
-    override suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): Flow<MessageRecord> {
+    override suspend fun sortedMessagesWithOffset(receiverId: Int, offset: Long): List<MessageRecord> {
         return sql {
             val query = select()
                 .from(MESSAGE)
@@ -46,7 +42,7 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
                 .orderBy(MESSAGE.DATE.asc())
                 .offset(offset)
 
-            Flux.from(query).asFlow().map {
+            query.map {
                 it.into(MessageRecord::class.java)
             }
         }
@@ -71,14 +67,10 @@ suspend inline fun MessageRecord.domain(): Message {
 }
 
 suspend inline fun MessageRecord.unsafeDomain(): Message {
-    val message = this
-    val receiverRepository = di { inject<ReceiverRepositoryImpl>().value }
     return transaction {
         sql {
             either {
-                val sender = receiverRepository.load(message.sender)
-                val receiver = receiverRepository.load(message.receiver)
-                Message(content, date.toKotlinLocalDateTime(), sender.domain(), receiver.domain())
+                domain()
             }.fold({ throw IllegalStateException("SHOULD NOT HAPPEN") }) { it }
         }
     }

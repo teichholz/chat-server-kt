@@ -2,8 +2,6 @@ import arrow.continuations.SuspendApp
 import arrow.continuations.ktor.server
 import arrow.core.raise.either
 import arrow.fx.coroutines.resourceScope
-import arrow.resilience.Schedule
-import arrow.resilience.retry
 import chat.commons.protocol.MessagePayloadSocket
 import chat.commons.protocol.Protocol
 import chat.commons.protocol.ack
@@ -31,14 +29,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.isActive
 import kotlinx.datetime.toJavaLocalDateTime
@@ -60,7 +53,6 @@ import repository.domain
 import repository.transaction
 import repository.unsafeDomain
 import scheduler.Connections
-import scheduler.DeliverMessagesJob
 import scheduler.DeliverMessagesJob.connections
 import scheduler.DeliverMessagesJob.id
 import scheduler.JobRegistry
@@ -193,13 +185,19 @@ fun Application.routing() {
         authenticate("basic-auth") {
             webSocket("/receive") {
                 keepConnection {
-                    val session = connections[call.principal<Receiver>()?.id]!!
+                    val principal = call.principal<Receiver>()!!
+                    val session = connections[principal.id]!!
+
+                    var sent = session.lastMessage
 
                     while (isActive) {
-                        transaction {
-                            // TODO something wrong here
-                            DeliverMessagesJob.messageRepository.sortedMessagesWithOffset(id, session.lastMessage)
-                        }.onEach {
+                        val messages = transaction {
+                            messageRepository.sortedMessagesWithOffset(principal.id, sent)
+                        }
+
+                        logger.info("Found unsent messages: $messages")
+
+                        messages.forEach {
                             logger.info("Found unsent message: $it")
                             val msg = it.unsafeDomain()
                             sendSerialized(message {
@@ -215,17 +213,16 @@ fun Application.routing() {
                             logger.info("Send message and received ACK: $protocol")
                             when (protocol) {
                                 is Protocol.ACK -> {
-                                    if (protocol.payload != session.lastMessage + 1) {
-                                        throw IllegalStateException("ACK not in order")
-                                    }
+                                    sent++
+//                                    if (protocol.payload != session.lastMessage + 1) {
+//                                        throw IllegalStateException("ACK not in order")
+//                                    }
                                 }
 
                                 else -> throw IllegalStateException("SHOULD NOT HAPPEN")
                             }
-                            DeliverMessagesJob.connections.incrementMessageCount(id)
-                        }.catch {
-                            DeliverMessagesJob.logger.error("Error trying to send messages: $it")
-                        }.retry(Schedule.recurs(3)).launchIn(CoroutineScope(Dispatchers.IO))
+                            connections.incrementMessageCount(id)
+                        }
 
                         delay(5000)
                     }
