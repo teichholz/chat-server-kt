@@ -32,10 +32,9 @@ object Scheduler : KoinComponent {
         logger.info("Scheduling job ${job.name}")
         val cJob = tickerFlow(period).onEach {
             job.run()
-            //logger.info("Job step ${it} ($period) for ${job.name} finished")
         }.launchIn(CoroutineScope(parentSupervisor + Dispatchers.IO))
 
-        jobs += job.supervise(cJob)
+        jobs += job.job(cJob)
     }
 
     private fun tickerFlow(period: Duration, initialDelay: Duration = Duration.ZERO) = flow {

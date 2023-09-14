@@ -58,11 +58,6 @@ class ReceiverRepositoryTest : FunSpec(), KoinTest {
         test("Flow") {
             DbInit.initializeDb()
 
-            transaction {
-                messageRepository.sortedMessagesWithOffset(1, 0).onEach {
-                    println(it)
-                }.catch { println(it) }.launchIn(this@test)
-            }
         }
     }
 }

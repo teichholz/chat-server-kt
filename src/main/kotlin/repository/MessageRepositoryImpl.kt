@@ -38,7 +38,7 @@ class MessageRepositoryImpl(db: HikariDataSource) : MessageRepository(db) {
         return sql {
             val query = select()
                 .from(MESSAGE)
-                .where(MESSAGE.RECEIVER.eq(receiverId) /*.or(MESSAGE.SENDER.eq(receiverId)) */)
+                .where(MESSAGE.RECEIVER.eq(receiverId).or(MESSAGE.SENDER.eq(receiverId)))
                 .orderBy(MESSAGE.DATE.asc())
                 .offset(offset)
 

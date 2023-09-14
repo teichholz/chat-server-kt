@@ -8,9 +8,9 @@ interface Job<ID> {
 }
 
 interface SupervisedJob<ID> : Job<ID> {
-    val supervisor: kotlinx.coroutines.Job
+    val job: kotlinx.coroutines.Job
 }
 
-fun <ID> Job<ID>.supervise(supervisor: kotlinx.coroutines.Job): SupervisedJob<ID> = object : SupervisedJob<ID>, Job<ID> by this {
-    override val supervisor: kotlinx.coroutines.Job = supervisor
+fun <ID> Job<ID>.job(job: kotlinx.coroutines.Job): SupervisedJob<ID> = object : SupervisedJob<ID>, Job<ID> by this {
+    override val job: kotlinx.coroutines.Job = job
 }

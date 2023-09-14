@@ -25,7 +25,7 @@ class JobRegistry<ID : Any> {
         val job = jobs[id]
         ensureNotNull(job) { JobError.JobNotFound(id) }
 
-        job.supervisor.cancelAndJoin()
+        job.job.cancelAndJoin()
         jobs -= id
     }
 

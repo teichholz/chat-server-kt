@@ -1,39 +1,43 @@
 package scheduler
 
-import arrow.fx.coroutines.ResourceScope
+import io.ktor.server.auth.*
+import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
-import io.ktor.websocket.*
 import logger.LoggerDelegate
 import model.Receiver
+import org.koin.ktor.ext.inject
 import java.util.*
 
-data class ReceiverSession(val receiver: Receiver, val lastMessage: Long, val session: WebSocketServerSession) {
-    suspend fun session(block: suspend WebSocketServerSession.() -> Unit) = session.block()
-}
+data class ReceiverSession(val receiver: Receiver, val lastMessage: Long, val receive: WebSocketServerSession? = null, val send: WebSocketServerSession? = null) {}
 
+/**
+ * This class is responsible for keeping track of the websocket connections to the current server
+ */
 class Connections(private val users: MutableMap<Int, ReceiverSession> = Collections.synchronizedMap(mutableMapOf())) : MutableMap<Int, ReceiverSession> by users {
     val logger by LoggerDelegate()
 
-    fun updateLastMessage(receiverId: Int, lastMessage: Long) {
-        users[receiverId]?.let {
-            users[receiverId] = it.copy(lastMessage = lastMessage)
-        }
+    context(WebSocketServerSession)
+    fun messageCount(): Long {
+        val principal = call.principal<Receiver>()!!
+        return users[principal.id]?.lastMessage ?: 0
     }
 
-    fun incrementMessageCount(receiverId: Int) {
+    fun incrementMessageCount(receiverId: Int): Long {
         users[receiverId]?.let {
             users[receiverId] = it.copy(lastMessage = it.lastMessage + 1)
         }
+        return users[receiverId]?.lastMessage ?: 0
     }
 
-    context(ResourceScope)
-    suspend fun install() {
-        install({ this@Connections }) { connections, _ ->
-            connections.values.forEach {
-                logger.info("Closing connection for ${it.receiver.name}")
-                it.session.close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server shut down"))
-                connections -= it.receiver.id
-            }
-        }
+    context(WebSocketServerSession)
+    fun incrementMessageCount(): Long {
+        val principal = call.principal<Receiver>()!!
+        return incrementMessageCount(principal.id)
     }
+}
+
+context(Route)
+fun WebSocketServerSession.currentSession(): ReceiverSession {
+    val connections by inject<Connections>()
+    return connections[call.principal<Receiver>()!!.id]!!
 }

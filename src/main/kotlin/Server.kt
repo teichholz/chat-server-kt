@@ -13,7 +13,6 @@ import chat.commons.routing.ReceiverPayloadLogin
 import chat.commons.routing.ReceiverPayloadLogout
 import chat.commons.routing.ReceiverPayloadRegister
 import chat.commons.routing.ReceiverPayloadWithId
-import di.di
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.*
 import io.ktor.serialization.kotlinx.json.*
@@ -30,7 +29,10 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.isActive
@@ -40,7 +42,6 @@ import logger.getLogger
 import model.Receiver
 import model.tables.records.MessageRecord
 import model.tables.records.ReceiverRecord
-import org.koin.core.component.inject
 import org.koin.ksp.generated.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
@@ -53,12 +54,11 @@ import repository.domain
 import repository.transaction
 import repository.unsafeDomain
 import scheduler.Connections
-import scheduler.DeliverMessagesJob.connections
-import scheduler.DeliverMessagesJob.id
 import scheduler.JobRegistry
 import scheduler.ReceiverSession
 import scheduler.Scheduler
 import scheduler.SchedulerModule
+import scheduler.currentSession
 
 val logger = getLogger("Application")
 
@@ -71,9 +71,6 @@ fun main() = SuspendApp {
             routing()
         }
         Scheduler.install()
-        di { inject<Connections>().value }.install()
-
-        //Scheduler.schedule(5.seconds, DeliverMessagesJob)
 
         awaitCancellation()
     }
@@ -185,14 +182,11 @@ fun Application.routing() {
         authenticate("basic-auth") {
             webSocket("/receive") {
                 keepConnection {
-                    val principal = call.principal<Receiver>()!!
-                    val session = connections[principal.id]!!
-
-                    var sent = session.lastMessage
+                    val session = currentSession()
 
                     while (isActive) {
                         val messages = transaction {
-                            messageRepository.sortedMessagesWithOffset(principal.id, sent)
+                            messageRepository.sortedMessagesWithOffset(session.receiver.id, connections.messageCount())
                         }
 
                         logger.info("Found unsent messages: $messages")
@@ -213,15 +207,11 @@ fun Application.routing() {
                             logger.info("Send message and received ACK: $protocol")
                             when (protocol) {
                                 is Protocol.ACK -> {
-                                    sent++
-//                                    if (protocol.payload != session.lastMessage + 1) {
-//                                        throw IllegalStateException("ACK not in order")
-//                                    }
+                                    connections.incrementMessageCount()
                                 }
 
                                 else -> throw IllegalStateException("SHOULD NOT HAPPEN")
                             }
-                            connections.incrementMessageCount(id)
                         }
 
                         delay(5000)
@@ -256,6 +246,8 @@ fun Application.routing() {
                                 )
                             }
                             sendSerialized(ack {})
+                            connections.incrementMessageCount()
+
                         }.onLeft {
                             logger.error("Error saving received message: $it")
                         }
@@ -268,11 +260,6 @@ fun Application.routing() {
         authenticate("basic-auth") {
             post("/users/logout") {
                 val logout = call.receive<ReceiverPayloadLogout>()
-                connections[logout.id]?.let {
-                    it.session {
-                        close(CloseReason(CloseReason.Codes.NORMAL, "User logged out"))
-                    }
-                }
                 connections -= logout.id
             }
         }
@@ -282,36 +269,14 @@ fun Application.routing() {
                 val users = transaction {
                     receiverRepository.users().map {
                         ReceiverPayload(it.name)
+                    }.filter {
+                        it.name != call.principal<Receiver>()!!.name
                     }.toList()
                 }
 
                 call.respond(users)
             }
         }
-
-        /*post("/user/configure") {
-        val config: ReceiverPayloadConfiguration = call.receive()
-        either {
-            transaction {
-                val receiver = receiverRepository.load(config.from.id)
-                if (config.from.equals(receiver.payload())) {
-                    // TODO: Name should be unique
-                    receiver.name = config.to.name
-                    receiverRepository.save(receiver)
-                } else {
-                    raise("User mismatch")
-                }
-            }
-        }.onLeft {
-            when (it) {
-                is String -> call.respond(it)
-                is SqlError.RecordNotFound -> call.respond("User Not Found")
-            }
-        }.onRight {
-            call.respond("Configured user")
-        }
-    }*/
-
     }
 }
 
@@ -319,10 +284,11 @@ fun Application.routing() {
 context(Route)
 suspend fun DefaultWebSocketServerSession.keepConnection(
     block: suspend DefaultWebSocketServerSession.() -> Unit
-): Nothing {
+) {
     val principal: Receiver = call.principal()!!
-    var auth: Protocol.AUTH? = null
+    val connections by inject<Connections>()
 
+    var auth: Protocol.AUTH? = null
     try {
         val protocol = receiveDeserialized<Protocol>()
 
@@ -332,15 +298,19 @@ suspend fun DefaultWebSocketServerSession.keepConnection(
         }
 
         auth = protocol as Protocol.AUTH
-        connections += principal.id to ReceiverSession(principal, protocol.payload.lastMessage, this)
+        connections += principal.id to ReceiverSession(principal, protocol.payload.lastMessage)
         sendSerialized(ack {})
 
         block()
 
         awaitCancellation()
     } catch (e: Throwable) {
-        logger.error("Error in authenticated block: $e")
-        throw e
+        if (e is ClosedReceiveChannelException || e is ClosedSendChannelException) {
+            logger.info("Websocket connection closed for ${principal.name}")
+        } else {
+            logger.error("Error in keepConnection block: $e")
+            throw e
+        }
     } finally {
         close(CloseReason(CloseReason.Codes.GOING_AWAY, "Server is shutting down"))
         auth?.auth {
